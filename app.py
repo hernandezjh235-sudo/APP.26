@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 # ============================================================
-# MLB STRIKEOUT PROP ENGINE — ONE FILE — v10.8 BAYESIAN MARKOV + XGB ASSIST
+# MLB STRIKEOUT PROP ENGINE — ONE FILE — v11.9
+# MERGED: TRUE CALIBRATION + MANAGER HOOK + DENSITY ALTITUDE
 # Refresh first, then save official before-game snapshot
 # Real lines only. No fake prop lines.
 # Google Drive persistent logs + grading + learning.
@@ -19,7 +20,7 @@ import streamlit as st
 from math import exp, factorial
 from datetime import datetime, timedelta
 
-APP_VERSION = "v11.1 REAL 2-3 DAY BULLPEN FATIGUE"
+APP_VERSION = "v11.10 POWER LEARNING + BULLPEN/UMPIRE CALIBRATION"
 
 try:
     import pytz
@@ -51,6 +52,10 @@ SIGNAL_TRACKING_FILE = os.path.join(STORAGE_DIR, "signal_tracking.json")
 LONG_BACKTEST_FILE = os.path.join(STORAGE_DIR, "long_backtest_rows.json")
 LINEUP_CACHE_FILE = os.path.join(STORAGE_DIR, "locked_lineup_cache.json")
 LINE_HISTORY_FILE = os.path.join(STORAGE_DIR, "line_history.json")
+CALIBRATION_ENGINE_FILE = os.path.join(STORAGE_DIR, "true_calibration_engine.json")
+BULLPEN_LEARNING_FILE = os.path.join(STORAGE_DIR, "bullpen_learning_engine.json")
+UMPIRE_LEARNING_FILE = os.path.join(STORAGE_DIR, "umpire_learning_engine.json")
+GRADED_FEATURES_FILE = os.path.join(STORAGE_DIR, "graded_feature_bank.json")
 
 MLB_BASE = "https://statsapi.mlb.com/api/v1"
 MLB_LIVE = "https://statsapi.mlb.com/api/v1.1"
@@ -102,6 +107,69 @@ MIN_BETTABLE_PROB = 0.64
 MIN_BETTABLE_EV = 0.06
 MIN_CONFIRMED_LINEUP_SCORE = 90
 MAX_RECOMMENDED_KELLY = 0.02
+
+# =========================
+# v11.4 RUN-DAMAGE / GAME-SCRIPT RISK SETTINGS
+# =========================
+OVER_MIN_PROB_STRONG = 0.65
+OVER_MIN_EDGE_STRONG = 1.25
+RUN_DAMAGE_BF_CUT_MILD = 0.96
+RUN_DAMAGE_BF_CUT_HIGH = 0.91
+RUN_DAMAGE_BF_CUT_EXTREME = 0.86
+HIGH_RUN_DAMAGE_WHIP = 1.35
+HIGH_RUN_DAMAGE_RECENT_ER = 4.0
+HIGH_OPP_CONTACT_RATE = 0.78
+HIGH_OPP_SLG_VS_PITCH = 0.520
+
+# =========================
+# v11.6 REPEAT MATCHUP FAMILIARITY SETTINGS
+# =========================
+REPEAT_MATCHUP_LOOKBACK_DAYS = 21
+REPEAT_MATCHUP_FACTOR_MIN = 0.965
+REPEAT_MATCHUP_FACTOR_MAX = 1.000
+REPEAT_MATCHUP_SAME_7D_FACTOR = 0.970
+REPEAT_MATCHUP_SAME_14D_FACTOR = 0.982
+REPEAT_MATCHUP_SAME_21D_FACTOR = 0.990
+REPEAT_MATCHUP_MULTI_RECENT_FACTOR = 0.965
+
+# =========================
+# v11.8 TRUE CALIBRATION ENGINE SETTINGS
+# =========================
+CALIBRATION_MIN_GLOBAL_SAMPLES = 25
+CALIBRATION_MIN_BUCKET_SAMPLES = 8
+CALIBRATION_MAX_PROJ_SHIFT_KS = 0.35
+CALIBRATION_MAX_PROB_SHIFT = 0.08
+CALIBRATION_PRIOR_STRENGTH = 18
+CALIBRATION_NOISE_RANGE_SOFT_CAP = 5.0
+CALIBRATION_RECENT_LIMIT = 2500
+
+# =========================
+# v11.9 STRATEGY UPGRADES
+# =========================
+# Third-Time-Through-the-Order / manager hook sensitivity.
+# Small cap so it improves volume realism without nuking elite starters.
+MANAGER_HOOK_STRICTNESS = 0.065
+TTTO_THRESHOLD_BATTERS = 18
+MANAGER_HOOK_RECENT_BF_CUTOFF = 20
+MANAGER_HOOK_RATE_TRIGGER = 0.60
+
+# Density-altitude style weather sensitivity for K props.
+# Higher heat/humidity can slightly reduce pitch movement/whiffs.
+DA_K_FACTOR_MIN = 0.965
+DA_K_FACTOR_MAX = 1.015
+
+# =========================
+# v11.10 POWER LEARNING SETTINGS
+# =========================
+# These learn only from graded official snapshots. They are capped so small samples
+# cannot overpower the main projection, Statcast, lineups, or real lines.
+BULLPEN_LEARN_MIN_SAMPLES = 10
+BULLPEN_LEARN_MAX_BF_ADJ = 0.035
+UMPIRE_LEARN_MIN_SAMPLES = 8
+UMPIRE_LEARN_MAX_K_ADJ = 0.018
+FEATURE_BANK_RECENT_LIMIT = 30000
+CONTEXT_PRIOR_STRENGTH = 14
+
 LEARNING_MIN_PRIOR_STARTS = 5
 LEARNING_RATE = 0.04
 LEARNING_SCALE_MIN = 0.92
@@ -604,36 +672,317 @@ def log_long_backtest_row(pick):
         rows.append(slim)
         save_json(LONG_BACKTEST_FILE, rows[-20000:])
 
+def calibration_prop_type(row=None):
+    # This one-file app is currently built around MLB pitcher strikeouts.
+    return "pitcher_ks"
+
+def calibration_line_source_group(source):
+    src = str(source or "").lower()
+    if "underdog" in src:
+        return "underdog"
+    if "prize" in src:
+        return "prizepicks"
+    if "sportsbook" in src or "draftkings" in src or "fanduel" in src or "betmgm" in src:
+        return "sportsbook"
+    if "optic" in src:
+        return "opticodds"
+    if "sportsgameodds" in src or "sgo" in src:
+        return "sportsgameodds"
+    return "other"
+
+def calibration_bucket(value, cuts, labels):
+    v = safe_float(value)
+    if v is None:
+        return "unknown"
+    for cut, label in zip(cuts, labels):
+        if v <= cut:
+            return label
+    return labels[-1] if labels else "unknown"
+
+def calibration_tags_from_row(row):
+    side = str(row.get("pick_side") or "UNKNOWN").upper()
+    src_group = calibration_line_source_group(row.get("line_source"))
+    prob = safe_float(row.get("fair_probability"))
+    edge = safe_float(row.get("abs_edge"))
+    line = safe_float(row.get("line"))
+    score = safe_float(row.get("data_score"))
+    risk = str(row.get("risk_label") or "UNKNOWN").upper()
+    lineup = "locked" if row.get("lineup_locked") else "fallback"
+    price = "real_price" if row.get("price_is_real") else "estimated_price"
+
+    bullpen_status = str(row.get("bullpen_status") or "UNKNOWN").upper()
+    umpire_name = normalize_name(row.get("umpire") or "Unknown").replace(" ", "_")
+    manager_hook = str(row.get("manager_hook_status") or row.get("manager_hook") or "UNKNOWN").upper()
+    weather_factor = safe_float(row.get("weather_factor"))
+    ump_factor = safe_float(row.get("ump_factor"))
+    bf_factor = safe_float(row.get("bullpen_bf_factor"))
+
+    return [
+        f"prop={calibration_prop_type(row)}",
+        f"side={side}",
+        f"source={src_group}",
+        f"side_source={side}_{src_group}",
+        f"prob_bucket={calibration_bucket(prob, [0.54,0.58,0.62,0.66,0.70,0.76], ['p<=54','p55-58','p59-62','p63-66','p67-70','p71-76','p77+'])}",
+        f"edge_bucket={calibration_bucket(edge, [0.49,0.99,1.49,1.99,2.49], ['e<0.5','e0.5-1.0','e1.0-1.5','e1.5-2.0','e2.0-2.5','e2.5+'])}",
+        f"line_bucket={calibration_bucket(line, [3.5,4.5,5.5,6.5], ['l<=3.5','l4.5','l5.5','l6.5','l7+'])}",
+        f"score_bucket={calibration_bucket(score, [69,79,87,92,96], ['s<70','s70s','s80-87','s88-92','s93-96','s97+'])}",
+        f"risk={risk}",
+        f"lineup={lineup}",
+        f"price={price}",
+        f"bullpen={bullpen_status}",
+        f"manager_hook={manager_hook}",
+        f"umpire={umpire_name}",
+        f"weather_bucket={calibration_bucket(weather_factor, [0.975,0.995,1.005,1.025], ['weather_low','weather_slight_low','weather_neutral','weather_slight_high','weather_high'])}",
+        f"ump_factor_bucket={calibration_bucket(ump_factor, [0.985,0.995,1.005,1.015], ['ump_low','ump_slight_low','ump_neutral','ump_slight_high','ump_high'])}",
+        f"bullpen_factor_bucket={calibration_bucket(bf_factor, [0.975,0.995,1.005,1.025], ['bp_cut','bp_slight_cut','bp_neutral','bp_slight_boost','bp_boost'])}",
+    ]
+
 def build_model_calibration_profile(results):
-    finished = [r for r in results if r.get("actual") is not None and r.get("projection") is not None]
+    finished = [r for r in (results or [])[-CALIBRATION_RECENT_LIMIT:] if r.get("actual") is not None and r.get("projection") is not None]
+    finished = [r for r in finished if r.get("graded_result") in ["WIN", "LOSS"] or r.get("win") is not None]
     if not finished:
-        return {"samples": 0, "mae": None, "bias": None, "hit_rate": None, "quality_score": 50}
-    errs = [safe_float(r.get("actual"), 0) - safe_float(r.get("projection"), 0) for r in finished]
-    mae = float(np.mean([abs(e) for e in errs]))
-    bias = float(np.mean(errs))
-    wins = [1 if r.get("win") else 0 for r in finished if r.get("win") is not None]
+        return {"samples": 0, "mae": None, "bias": None, "hit_rate": None, "quality_score": 50, "bucket_stats": {}, "note": "No graded samples yet"}
+
+    errors = []
+    wins = []
+    predicted = []
+    bucket_stats = {}
+
+    def ensure_bucket(tag):
+        if tag not in bucket_stats:
+            bucket_stats[tag] = {"tag": tag, "count": 0, "wins": 0, "pred_sum": 0.0, "err_sum": 0.0, "abs_err_sum": 0.0}
+        return bucket_stats[tag]
+
+    for r in finished:
+        actual = safe_float(r.get("actual"))
+        proj = safe_float(r.get("projection"))
+        if actual is None or proj is None:
+            continue
+        err = actual - proj
+        win = 1 if (r.get("graded_result") == "WIN" or r.get("win") is True) else 0
+        prob = safe_float(r.get("fair_probability"), 0.5) or 0.5
+        errors.append(err)
+        wins.append(win)
+        predicted.append(prob)
+        for tag in calibration_tags_from_row(r):
+            b = ensure_bucket(tag)
+            b["count"] += 1
+            b["wins"] += win
+            b["pred_sum"] += prob
+            b["err_sum"] += err
+            b["abs_err_sum"] += abs(err)
+
+    sample_count = len(errors)
+    if not sample_count:
+        return {"samples": 0, "mae": None, "bias": None, "hit_rate": None, "quality_score": 50, "bucket_stats": {}, "note": "No usable graded rows"}
+
+    mae = float(np.mean([abs(e) for e in errors]))
+    bias = float(np.mean(errors))
     hit_rate = float(np.mean(wins)) if wins else None
-    quality = 50
-    quality += min(len(finished), 50) * 0.6
-    quality -= min(mae, 3) * 8
-    quality -= abs(bias) * 4
+    avg_pred = float(np.mean(predicted)) if predicted else 0.5
+    brier = float(np.mean([(w - p) ** 2 for w, p in zip(wins, predicted)])) if predicted else None
+
+    compact = {}
+    for tag, b in bucket_stats.items():
+        c = max(1, b["count"])
+        compact[tag] = {
+            "tag": tag,
+            "count": int(b["count"]),
+            "wins": int(b["wins"]),
+            "win_rate": round((b["wins"] + CALIBRATION_PRIOR_STRENGTH * 0.5) / (b["count"] + CALIBRATION_PRIOR_STRENGTH), 4),
+            "raw_win_rate": round(b["wins"] / c, 4),
+            "avg_pred": round(b["pred_sum"] / c, 4),
+            "bias": round(b["err_sum"] / c, 4),
+            "mae": round(b["abs_err_sum"] / c, 4),
+        }
+
+    quality = 48
+    quality += min(sample_count, 150) * 0.28
+    quality -= min(mae, 3.5) * 7.0
+    quality -= min(abs(bias), 2.5) * 5.0
+    if brier is not None:
+        quality -= max(0, brier - 0.22) * 80
     quality = int(clamp(quality, 0, 100))
-    return {
-        "samples": len(finished),
-        "mae": round(mae, 2),
-        "bias": round(bias, 2),
+
+    profile = {
+        "version": APP_VERSION,
+        "updated_at": now_iso(),
+        "samples": sample_count,
+        "mae": round(mae, 3),
+        "bias": round(bias, 3),
         "hit_rate": hit_rate,
-        "quality_score": quality
+        "avg_predicted_prob": round(avg_pred, 4),
+        "brier": None if brier is None else round(brier, 4),
+        "quality_score": quality,
+        "bucket_stats": compact,
+        "note": "True calibration active" if sample_count >= CALIBRATION_MIN_GLOBAL_SAMPLES else "Calibration building sample size",
+    }
+    try:
+        save_json(CALIBRATION_ENGINE_FILE, profile)
+    except Exception:
+        pass
+    return profile
+
+def current_calibration_context(row, mean, active_line, active_source, fair_probability=None, price_is_real=False, score=None, risk_label=None, p10=None, p90=None):
+    line = safe_float(active_line)
+    proj = safe_float(mean)
+    side = "NO LINE"
+    if line is not None and proj is not None:
+        side = "OVER" if proj > line else "UNDER"
+    gap = None if line is None or proj is None else abs(proj - line)
+    return {
+        "prop_type": "pitcher_ks",
+        "pick_side": side,
+        "line_source": active_source,
+        "line": line,
+        "projection": proj,
+        "abs_edge": gap,
+        "fair_probability": fair_probability,
+        "price_is_real": price_is_real,
+        "data_score": score,
+        "risk_label": risk_label,
+        "lineup_locked": bool(row.get("lineup_locked")) if isinstance(row, dict) else False,
+        "bullpen_status": row.get("bullpen_status") if isinstance(row, dict) else None,
+        "bullpen_bf_factor": row.get("bullpen_bf_factor") if isinstance(row, dict) else None,
+        "manager_hook_status": row.get("manager_hook_status") or row.get("manager_hook") if isinstance(row, dict) else None,
+        "umpire": row.get("umpire") if isinstance(row, dict) else None,
+        "ump_factor": row.get("ump_factor") if isinstance(row, dict) else None,
+        "weather_factor": row.get("weather_factor") if isinstance(row, dict) else None,
+        "p10": p10,
+        "p90": p90,
     }
 
+def calibration_weighted_bucket_blend(profile, context, mode="bias"):
+    if not profile or profile.get("samples", 0) <= 0:
+        return None
+    bucket_stats = profile.get("bucket_stats") or {}
+    tags = calibration_tags_from_row(context or {})
+    vals = []
+    for tag in tags:
+        b = bucket_stats.get(tag)
+        if not b:
+            continue
+        count = int(b.get("count") or 0)
+        if count < CALIBRATION_MIN_BUCKET_SAMPLES:
+            continue
+        if mode == "prob_delta":
+            val = safe_float(b.get("win_rate"), 0.5) - safe_float(b.get("avg_pred"), 0.5)
+        elif mode == "mae":
+            val = safe_float(b.get("mae"))
+        else:
+            val = safe_float(b.get("bias"))
+        if val is None:
+            continue
+        weight = math.sqrt(count)
+        if tag.startswith("side_source="):
+            weight *= 1.35
+        if tag.startswith("prob_bucket=") or tag.startswith("edge_bucket="):
+            weight *= 1.15
+        vals.append((val, weight, tag, count))
+    if not vals:
+        return None
+    total_w = sum(w for _, w, _, _ in vals) or 1.0
+    blended = sum(v * w for v, w, _, _ in vals) / total_w
+    sample_strength = sum(c for _, _, _, c in vals)
+    return {"value": blended, "tags": [t for _, _, t, _ in vals], "sample_strength": sample_strength}
+
 def apply_calibration_adjustment(k_rate, calibration_profile, enabled=True):
+    # Backward-compatible pre-simulation K-rate adjustment. Kept deliberately small.
     if not enabled:
         return k_rate, "Calibration adjustment disabled"
-    if not calibration_profile or calibration_profile.get("samples", 0) < 10:
+    if not calibration_profile or calibration_profile.get("samples", 0) < CALIBRATION_MIN_GLOBAL_SAMPLES:
         return k_rate, "Calibration sample too small; no adjustment"
     bias = safe_float(calibration_profile.get("bias"), 0) or 0
-    factor = clamp(1 + (bias * 0.01), 0.96, 1.04)
-    return clamp(k_rate * factor, 0.08, 0.50), f"Historical calibration adjustment x{factor:.3f}"
+    quality = safe_float(calibration_profile.get("quality_score"), 50) or 50
+    confidence = clamp((quality - 45) / 55, 0.15, 0.85)
+    factor = clamp(1 + (bias * 0.006 * confidence), 0.975, 1.025)
+    return clamp(k_rate * factor, 0.08, 0.50), f"True calibration K-rate n={calibration_profile.get('samples')} x{factor:.3f}"
+
+def apply_true_projection_calibration(mean, sims, context, calibration_profile, enabled=True):
+    if not enabled:
+        return mean, sims, {"active": False, "shift": 0.0, "note": "True calibration disabled"}
+    if not calibration_profile or calibration_profile.get("samples", 0) < CALIBRATION_MIN_GLOBAL_SAMPLES:
+        n = 0 if not calibration_profile else calibration_profile.get("samples", 0)
+        return mean, sims, {"active": False, "shift": 0.0, "note": f"True calibration warming up ({n}/{CALIBRATION_MIN_GLOBAL_SAMPLES})"}
+
+    global_bias = safe_float(calibration_profile.get("bias"), 0.0) or 0.0
+    blend = calibration_weighted_bucket_blend(calibration_profile, context, mode="bias")
+    bucket_bias = safe_float(blend.get("value")) if blend else None
+    if bucket_bias is None:
+        raw_shift = global_bias * 0.45
+        used = "global"
+        sample_strength = calibration_profile.get("samples", 0)
+    else:
+        raw_shift = (global_bias * 0.30) + (bucket_bias * 0.70)
+        used = "bucket+global"
+        sample_strength = blend.get("sample_strength", 0)
+
+    quality = safe_float(calibration_profile.get("quality_score"), 50) or 50
+    strength = clamp((quality / 100.0) * (sample_strength / (sample_strength + 80.0)), 0.10, 0.85)
+    shift = clamp(raw_shift * strength, -CALIBRATION_MAX_PROJ_SHIFT_KS, CALIBRATION_MAX_PROJ_SHIFT_KS)
+    if abs(shift) < 0.01:
+        return mean, sims, {"active": False, "shift": 0.0, "note": f"True calibration neutral ({used})"}
+    new_sims = np.clip(np.asarray(sims, dtype=float) + shift, 0, None)
+    new_mean = float(np.mean(new_sims))
+    return new_mean, new_sims, {
+        "active": True,
+        "shift": round(float(shift), 3),
+        "note": f"True calibration projection shift {shift:+.2f} Ks ({used}, q={int(quality)}, n={calibration_profile.get('samples')})"
+    }
+
+def apply_true_probability_calibration(fair_prob, context, calibration_profile, enabled=True):
+    p = safe_float(fair_prob)
+    if p is None:
+        return fair_prob, {"active": False, "shift": 0.0, "note": "No probability to calibrate"}
+    if not enabled:
+        return clamp(p, 0.01, 0.99), {"active": False, "shift": 0.0, "note": "True probability calibration disabled"}
+    if not calibration_profile or calibration_profile.get("samples", 0) < CALIBRATION_MIN_GLOBAL_SAMPLES:
+        n = 0 if not calibration_profile else calibration_profile.get("samples", 0)
+        return clamp(p, 0.01, 0.99), {"active": False, "shift": 0.0, "note": f"Probability calibration warming up ({n}/{CALIBRATION_MIN_GLOBAL_SAMPLES})"}
+
+    blend = calibration_weighted_bucket_blend(calibration_profile, context, mode="prob_delta")
+    delta = safe_float(blend.get("value")) if blend else 0.0
+    sample_strength = blend.get("sample_strength", 0) if blend else 0
+    quality = safe_float(calibration_profile.get("quality_score"), 50) or 50
+    reliability = clamp((quality / 100.0) * (sample_strength / (sample_strength + 70.0)), 0.0, 0.75)
+
+    # Noise dampening: wide simulation intervals, weak data, fallback lineups, and estimated odds get pulled toward 50%.
+    p10 = safe_float((context or {}).get("p10"))
+    p90 = safe_float((context or {}).get("p90"))
+    range_width = (p90 - p10) if p10 is not None and p90 is not None else None
+    volatility = clamp((range_width or 3.5) / CALIBRATION_NOISE_RANGE_SOFT_CAP, 0.65, 1.35)
+    score = safe_float((context or {}).get("data_score"), 80) or 80
+    score_shrink = clamp((score - 55) / 45.0, 0.35, 1.0)
+    lineup_shrink = 1.0 if (context or {}).get("lineup_locked") else 0.82
+    price_shrink = 1.0 if (context or {}).get("price_is_real") else 0.92
+    noise_strength = clamp(score_shrink * lineup_shrink * price_shrink / volatility, 0.38, 1.0)
+
+    shifted = p + clamp(delta * reliability, -CALIBRATION_MAX_PROB_SHIFT, CALIBRATION_MAX_PROB_SHIFT)
+    damped = 0.50 + ((shifted - 0.50) * noise_strength)
+    final = clamp(damped, 0.01, 0.99)
+    shift = final - p
+    note = f"True probability calibration {shift:+.1%} | reliability {reliability:.2f} | noise {noise_strength:.2f}"
+    return final, {"active": abs(shift) >= 0.002, "shift": round(float(shift), 4), "note": note, "reliability": round(reliability, 3), "noise_strength": round(noise_strength, 3)}
+
+def build_true_calibration_dashboard(results):
+    profile = build_model_calibration_profile(results or [])
+    rows = []
+    for tag, b in (profile.get("bucket_stats") or {}).items():
+        rows.append({
+            "Bucket": tag,
+            "Samples": b.get("count"),
+            "Wins": b.get("wins"),
+            "Smoothed Win Rate": round((b.get("win_rate") or 0) * 100, 1),
+            "Raw Win Rate": round((b.get("raw_win_rate") or 0) * 100, 1),
+            "Avg Pred %": round((b.get("avg_pred") or 0) * 100, 1),
+            "Prob Delta %": round(((b.get("win_rate") or 0.5) - (b.get("avg_pred") or 0.5)) * 100, 1),
+            "Bias Ks": b.get("bias"),
+            "MAE Ks": b.get("mae"),
+        })
+    df = pd.DataFrame(rows)
+    if not df.empty:
+        df = df.sort_values(["Samples", "Prob Delta %"], ascending=[False, False])
+    return profile, df
 
 # =========================
 # MLB DATA
@@ -761,6 +1110,10 @@ def get_recent_logs(pid, n=12):
             "Ks": so,
             "BF": bf,
             "Pitches": pitches,
+            "ER": safe_float(stat.get("earnedRuns")),
+            "H": safe_float(stat.get("hits")),
+            "R": safe_float(stat.get("runs")),
+            "BB": safe_float(stat.get("baseOnBalls")),
             "K%": None if not bf else round((so or 0) / bf * 100, 1)
         })
     return rows
@@ -847,6 +1200,30 @@ def build_leash_model(recent_rows):
         "pitch_count_trend_note": pitch_trend_note,
         "source": f"{source}; {pitch_trend_note}"
     }
+
+def apply_managerial_hook_v11_9(expected_bf, recent_rows):
+    """v11.9: conservative starter-volume haircut for repeated early hooks.
+
+    Uses the pitcher's recent game logs only. If he is getting pulled around or
+    before the third-time-through window too often, we trim expected BF slightly.
+    The cut is capped and does not remove the existing leash/pitch-count model.
+    """
+    bf0 = safe_float(expected_bf, DEFAULT_BF) or DEFAULT_BF
+    if not recent_rows:
+        return bf0, "UNKNOWN", "Manager hook neutral: no recent starts"
+    usable = []
+    for r in recent_rows[:8]:
+        bf = safe_float(r.get("BF"), None)
+        if bf is not None and bf > 0:
+            usable.append(bf)
+    if len(usable) < 3:
+        return bf0, "LOW_SAMPLE", f"Manager hook neutral: only {len(usable)} recent BF samples"
+    early_hooks = sum(1 for bf in usable if bf <= MANAGER_HOOK_RECENT_BF_CUTOFF)
+    hook_rate = early_hooks / max(1, len(usable))
+    if hook_rate >= MANAGER_HOOK_RATE_TRIGGER and bf0 >= TTTO_THRESHOLD_BATTERS:
+        new_bf = float(clamp(bf0 * (1.0 - MANAGER_HOOK_STRICTNESS), 14, 31))
+        return new_bf, "STRICT_HOOK", f"Manager hook cut x{1.0-MANAGER_HOOK_STRICTNESS:.3f}: early-hook rate {hook_rate:.0%} ({early_hooks}/{len(usable)})"
+    return bf0, "NORMAL", f"Manager hook normal: early-hook rate {hook_rate:.0%} ({early_hooks}/{len(usable)})"
 
 def blend_pitcher_k_rate(profile_k, recent_rows, pitcher_id):
     profile_k = profile_k if profile_k is not None else LEAGUE_AVG_K
@@ -1325,6 +1702,679 @@ def bullpen_fatigue_bf_factor(team_id, as_of_date):
 
     return float(clamp(factor, 0.96, 1.04)), f"{note} ({usage.get('message')})", usage
 
+
+
+# =========================
+# v11.10 DEEP BULLPEN / UMPIRE LEARNING
+# =========================
+def context_learn_bucket(value, cuts, labels):
+    return calibration_bucket(value, cuts, labels)
+
+def bullpen_context_key_from_usage(usage):
+    usage = usage or {}
+    label = str(usage.get("label") or "UNKNOWN").upper()
+    pitches = safe_float(usage.get("bullpen_pitches"), 0) or 0
+    ip = safe_float(usage.get("bullpen_ip"), 0) or 0
+    b2b = safe_float(usage.get("back_to_back_relief_appearances"), 0) or 0
+    p_bucket = context_learn_bucket(pitches, [120, 180, 240, 300], ["p<=120", "p121-180", "p181-240", "p241-300", "p300+"])
+    ip_bucket = context_learn_bucket(ip, [8, 12, 18], ["ip<=8", "ip9-12", "ip13-18", "ip18+"])
+    b2b_bucket = context_learn_bucket(b2b, [0, 1, 3], ["b2b0", "b2b1", "b2b2-3", "b2b4+"])
+    return f"{label}|{p_bucket}|{ip_bucket}|{b2b_bucket}"
+
+def umpire_context_key(name):
+    nm = normalize_name(name or "Unknown").replace(" ", "_")
+    return nm or "unknown"
+
+def _load_context_model(path):
+    data = load_json(path, {})
+    if not isinstance(data, dict):
+        return {}
+    return data
+
+def _save_context_model(path, data):
+    save_json(path, data)
+
+def _smoothed_error_factor(model, key, metric="bf_error", min_samples=10, max_adj=0.03, denominator=22.0):
+    rec = (model or {}).get(str(key), {})
+    n = int(rec.get("count") or 0)
+    if n < min_samples:
+        return 1.0, f"learning warming up ({n}/{min_samples})", n
+    avg_err = safe_float(rec.get(metric), 0.0) or 0.0
+    # shrink toward 0 so a few outliers do not swing projections.
+    reliability = n / (n + CONTEXT_PRIOR_STRENGTH)
+    pct = clamp((avg_err / max(denominator, 1.0)) * reliability, -max_adj, max_adj)
+    return float(1.0 + pct), f"learned {metric} {avg_err:+.2f}, n={n}, rel={reliability:.2f}", n
+
+def bullpen_learning_bf_factor(usage):
+    """Learns whether bullpen states caused BF to be over/under-projected."""
+    if not usage or not usage.get("available"):
+        return 1.0, "Bullpen learning neutral: usage unavailable", None
+    key = bullpen_context_key_from_usage(usage)
+    model = _load_context_model(BULLPEN_LEARNING_FILE)
+    factor, note, n = _smoothed_error_factor(
+        model,
+        key,
+        metric="bf_error",
+        min_samples=BULLPEN_LEARN_MIN_SAMPLES,
+        max_adj=BULLPEN_LEARN_MAX_BF_ADJ,
+        denominator=22.0,
+    )
+    factor = float(clamp(factor, 1.0 - BULLPEN_LEARN_MAX_BF_ADJ, 1.0 + BULLPEN_LEARN_MAX_BF_ADJ))
+    return factor, f"Bullpen learning x{factor:.3f} [{key}] {note}", key
+
+def umpire_learning_k_factor(name):
+    """Learns if a specific umpire has caused K projection bias in graded games."""
+    if not name or str(name).lower() == "unknown":
+        return 1.0, "Umpire learning neutral: unknown umpire", None
+    key = umpire_context_key(name)
+    model = _load_context_model(UMPIRE_LEARNING_FILE)
+    factor, note, n = _smoothed_error_factor(
+        model,
+        key,
+        metric="k_error",
+        min_samples=UMPIRE_LEARN_MIN_SAMPLES,
+        max_adj=UMPIRE_LEARN_MAX_K_ADJ,
+        denominator=5.0,
+    )
+    factor = float(clamp(factor, 1.0 - UMPIRE_LEARN_MAX_K_ADJ, 1.0 + UMPIRE_LEARN_MAX_K_ADJ))
+    return factor, f"Umpire learning x{factor:.3f} [{key}] {note}", key
+
+def _update_context_avg(model, key, fields):
+    if key is None:
+        return model
+    key = str(key)
+    rec = model.get(key, {"count": 0})
+    old_n = int(rec.get("count") or 0)
+    new_n = old_n + 1
+    rec["count"] = new_n
+    rec["last_updated"] = now_iso()
+    for field, value in fields.items():
+        val = safe_float(value)
+        if val is None:
+            continue
+        old_avg = safe_float(rec.get(field), 0.0) or 0.0
+        rec[field] = round(old_avg + ((val - old_avg) / new_n), 5)
+    model[key] = rec
+    return model
+
+def get_actual_pitcher_workload(game_pk, pitcher_id):
+    """Return actual K/BF/pitches/IP after game final for deeper learning."""
+    box = safe_get_json(f"{MLB_BASE}/game/{game_pk}/boxscore")
+    if not box:
+        return {}
+    for side in ["home", "away"]:
+        players = box.get("teams", {}).get(side, {}).get("players", {})
+        for p in players.values():
+            person = p.get("person", {})
+            if str(person.get("id")) == str(pitcher_id):
+                pitching = p.get("stats", {}).get("pitching", {}) or {}
+                return {
+                    "actual": safe_float(pitching.get("strikeOuts")),
+                    "actual_bf": safe_float(pitching.get("battersFaced")),
+                    "actual_pitches": safe_float(pitching.get("numberOfPitches", pitching.get("pitchesThrown", pitching.get("pitchCount")))),
+                    "actual_ip": baseball_ip_to_float(pitching.get("inningsPitched")),
+                    "actual_er": safe_float(pitching.get("earnedRuns")),
+                    "actual_hits": safe_float(pitching.get("hits")),
+                    "actual_bb": safe_float(pitching.get("baseOnBalls")),
+                }
+    return {}
+
+def update_deep_context_learning_after_grade(pick):
+    """Accumulates post-game errors for future bullpen and umpire corrections."""
+    if not isinstance(pick, dict):
+        return
+    actual = safe_float(pick.get("actual"))
+    projection = safe_float(pick.get("projection"))
+    actual_bf = safe_float(pick.get("actual_bf"))
+    expected_bf = safe_float(pick.get("expected_bf"))
+    if actual is None or projection is None:
+        return
+
+    feature_bank = load_json(GRADED_FEATURES_FILE, [])
+    feature_bank.append({
+        "pick_id": pick.get("pick_id"),
+        "graded_at": pick.get("graded_at") or now_iso(),
+        "pitcher": pick.get("pitcher"),
+        "pitcher_id": pick.get("pitcher_id"),
+        "line": pick.get("line"),
+        "pick_side": pick.get("pick_side"),
+        "projection": projection,
+        "actual": actual,
+        "k_error": actual - projection,
+        "expected_bf": expected_bf,
+        "actual_bf": actual_bf,
+        "bf_error": None if actual_bf is None or expected_bf is None else actual_bf - expected_bf,
+        "umpire": pick.get("umpire"),
+        "ump_factor": pick.get("ump_factor"),
+        "bullpen_status": pick.get("bullpen_status"),
+        "bullpen_bf_factor": pick.get("bullpen_bf_factor"),
+        "bullpen_recent_pitches": pick.get("bullpen_recent_pitches"),
+        "bullpen_recent_ip": pick.get("bullpen_recent_ip"),
+        "bullpen_back_to_back_relievers": pick.get("bullpen_back_to_back_relievers"),
+        "weather_factor": pick.get("weather_factor"),
+        "manager_hook_status": pick.get("manager_hook_status") or pick.get("manager_hook"),
+        "graded_result": pick.get("graded_result"),
+    })
+    save_json(GRADED_FEATURES_FILE, feature_bank[-FEATURE_BANK_RECENT_LIMIT:])
+
+    # Umpire learning: actual Ks minus projected Ks for that umpire.
+    ump_key = umpire_context_key(pick.get("umpire")) if pick.get("umpire") and str(pick.get("umpire")).lower() != "unknown" else None
+    if ump_key:
+        model = _load_context_model(UMPIRE_LEARNING_FILE)
+        model = _update_context_avg(model, ump_key, {"k_error": actual - projection})
+        _save_context_model(UMPIRE_LEARNING_FILE, model)
+
+    # Bullpen learning: actual BF minus projected BF for that bullpen workload bucket.
+    bp_label = pick.get("bullpen_status")
+    if bp_label and actual_bf is not None and expected_bf is not None:
+        usage = {
+            "available": True,
+            "label": bp_label,
+            "bullpen_pitches": pick.get("bullpen_recent_pitches"),
+            "bullpen_ip": pick.get("bullpen_recent_ip"),
+            "back_to_back_relief_appearances": pick.get("bullpen_back_to_back_relievers"),
+        }
+        bp_key = bullpen_context_key_from_usage(usage)
+        model = _load_context_model(BULLPEN_LEARNING_FILE)
+        model = _update_context_avg(model, bp_key, {"bf_error": actual_bf - expected_bf, "k_error": actual - projection})
+        _save_context_model(BULLPEN_LEARNING_FILE, model)
+
+
+# =========================
+# v11.2 CONTEXT GUARDRAIL LAYER
+# =========================
+def opponent_k_rank_label_from_rate(opponent_k_rate):
+    """Convert real lineup/team K rate into a coarse rank-style label.
+
+    This is not a fake rank table. It is derived from the same real opponent K%
+    already used by the app. Lower rank number = more strikeout-friendly matchup.
+    """
+    ok = safe_float(opponent_k_rate, LEAGUE_AVG_K) or LEAGUE_AVG_K
+    if ok >= LEAGUE_AVG_K + 0.040:
+        return 1, "EXTREME_HIGH_K"
+    if ok >= LEAGUE_AVG_K + 0.030:
+        return 5, "HIGH_K"
+    if ok >= LEAGUE_AVG_K + 0.015:
+        return 10, "ABOVE_AVG_K"
+    if ok <= LEAGUE_AVG_K - 0.035:
+        return 30, "EXTREME_CONTACT"
+    if ok <= LEAGUE_AVG_K - 0.020:
+        return 25, "LOW_K"
+    return 15, "NEUTRAL_K"
+
+def vegas_total_leash_ks_adjustment(total):
+    """Small Ks projection nudge from run environment.
+
+    Lower totals usually help starters work deeper. Higher totals increase early-hook risk.
+    Kept very small so it cannot overpower real lineups, Statcast, or leash model.
+    """
+    t = safe_float(total)
+    if t is None:
+        return 0.0, "Vegas total unavailable; neutral"
+    if t <= 7.5:
+        return 0.18, "Low Vegas total; small Ks leash boost"
+    if t >= 9.5:
+        return -0.18, "High Vegas total; small Ks leash cut"
+    return 0.0, "Neutral Vegas total"
+
+def elite_pitcher_guard_ks_adjustment(k9, k_rate, opponent_k_rate):
+    """Protects elite K pitchers from being under-projected in strong K matchups.
+
+    This is capped and only adds a small amount. It does not auto-bet overs.
+    """
+    k9 = safe_float(k9)
+    kr = safe_float(k_rate)
+    opp_rank, opp_label = opponent_k_rank_label_from_rate(opponent_k_rate)
+
+    if k9 is None or kr is None:
+        return 0.0, "Elite pitcher guard unavailable"
+
+    if k9 >= 10.5 and kr >= 0.29:
+        if opp_rank <= 10:
+            return 0.35, f"Elite pitcher guard vs {opp_label}; capped boost"
+        return 0.22, "Elite pitcher guard; capped boost"
+    if k9 >= 9.8 and kr >= 0.27:
+        return 0.16, "High-K pitcher guard; capped boost"
+    return 0.0, "No elite pitcher guard"
+
+def pitch_mix_handedness_guard_ks_adjustment(pitch_type_rows, lineup_rows):
+    """Small boost when slider-heavy pitchers face many opposite/lefty bats.
+
+    Uses real pitch type rows and real lineup rows only. If either is unavailable, neutral.
+    """
+    try:
+        if not pitch_type_rows or not lineup_rows:
+            return 0.0, "Pitch-mix handedness guard unavailable"
+
+        slider_usage = 0.0
+        for r in pitch_type_rows:
+            pt = str(r.get("Pitch Type", "")).lower()
+            if pt in ["sl", "slider"]:
+                slider_usage = max(slider_usage, (safe_float(r.get("Usage %"), 0) or 0) / 100.0)
+
+        # The current MLB lineup payload in this app may not always include batter handedness.
+        # If handedness is absent, this stays neutral instead of guessing.
+        lefties = 0
+        for r in lineup_rows[:9]:
+            hand = str(r.get("Bat Side", r.get("Side", r.get("Bats", "")))).upper()
+            if hand.startswith("L"):
+                lefties += 1
+
+        if slider_usage > 0.32 and lefties >= 5:
+            return 0.16, f"Slider-heavy pitch mix vs {lefties} lefties; capped boost"
+        return 0.0, "Neutral pitch-mix handedness guard"
+    except Exception as e:
+        return 0.0, f"Pitch-mix handedness guard error: {e}"
+
+def apply_context_guardrail_projection(
+    projection,
+    line=None,
+    pitcher_profile=None,
+    pitcher_k_rate=None,
+    lineup_k=None,
+    recent_rows=None,
+    pitch_type_rows=None,
+    lineup_rows=None,
+    vegas_total=None,
+    roof_closed=False,
+    wind_in=False,
+    umpire_boost=0.0,
+):
+    """Final small, capped projection guardrail layer.
+
+    This layer is intentionally conservative:
+    - uses only already-real inputs when available
+    - never creates props or lines
+    - cannot move projection by more than +/- 0.65 Ks total
+    - cannot force a bet; EV/edge/no-bet filters still decide
+    """
+    base = safe_float(projection)
+    if base is None:
+        return projection, {
+            "Context Guardrail Adj": 0.0,
+            "Context Guardrail Notes": "Projection unavailable",
+            "Opponent K Rank Label": None,
+        }
+
+    notes = []
+    adj = 0.0
+
+    lineup_k_val = safe_float(lineup_k, LEAGUE_AVG_K) or LEAGUE_AVG_K
+    opp_rank, opp_label = opponent_k_rank_label_from_rate(lineup_k_val)
+    notes.append(f"Opponent K rank label: {opp_label}")
+
+    # Pull real K/9 if available
+    k9 = None
+    if isinstance(pitcher_profile, dict):
+        k9 = pitcher_profile.get("K/9")
+    kr = safe_float(pitcher_k_rate)
+
+    a, n = elite_pitcher_guard_ks_adjustment(k9, kr, lineup_k_val)
+    adj += a
+    notes.append(n)
+
+    # Real recent pitch count trend as a projection-level nudge, separate from BF factor
+    vals = []
+    for r in (recent_rows or [])[:3]:
+        p = safe_float(r.get("Pitches"))
+        if p is not None and p > 0:
+            vals.append(p)
+    if len(vals) >= 3:
+        avg = sum(vals) / len(vals)
+        if avg > 102:
+            adj += 0.16
+            notes.append(f"High L3 pitch-count trend ({avg:.0f}); small projection boost")
+        elif avg < 88:
+            adj -= 0.16
+            notes.append(f"Low L3 pitch-count trend ({avg:.0f}); small projection cut")
+        else:
+            notes.append(f"Neutral L3 pitch-count trend ({avg:.0f})")
+    else:
+        notes.append("Pitch-count trend thin; neutral")
+
+    a, n = vegas_total_leash_ks_adjustment(vegas_total)
+    adj += a
+    notes.append(n)
+
+    # Weather/roof is intentionally tiny because the app already has weather caps elsewhere
+    if bool(roof_closed):
+        adj += 0.05
+        notes.append("Roof closed; tiny environment stability boost")
+    elif bool(wind_in):
+        adj += 0.08
+        notes.append("Wind in; tiny Ks environment boost")
+
+    # Umpire boost must already be produced by a real umpire model. Manual boost defaults to 0.
+    ub = clamp(safe_float(umpire_boost, 0.0) or 0.0, -0.15, 0.15)
+    if abs(ub) > 0:
+        adj += ub
+        notes.append(f"Umpire guardrail adj {ub:+.2f}")
+
+    a, n = pitch_mix_handedness_guard_ks_adjustment(pitch_type_rows, lineup_rows)
+    adj += a
+    notes.append(n)
+
+    adj = float(clamp(adj, -0.65, 0.65))
+    final_projection = float(clamp(base + adj, 1.0, 14.0))
+
+    return final_projection, {
+        "Context Guardrail Adj": round(adj, 2),
+        "Context Guardrail Notes": " | ".join(notes),
+        "Opponent K Rank": opp_rank,
+        "Opponent K Rank Label": opp_label,
+    }
+
+
+# =========================
+# v11.4 RUN-DAMAGE / SHORT-OUTING RISK LAYER
+# =========================
+def pitcher_run_damage_profile(pitcher_id, recent_rows=None, statcast_profile=None):
+    profile = {
+        "available": False,
+        "whip": None,
+        "era": None,
+        "recent_er_avg": None,
+        "recent_hits_avg": None,
+        "recent_ip_avg": None,
+        "risk_score": 0,
+        "risk_level": "UNKNOWN",
+        "notes": []
+    }
+
+    try:
+        data = safe_get_json(
+            f"{MLB_BASE}/people/{pitcher_id}/stats",
+            params={"stats": "season", "group": "pitching"},
+            timeout=12,
+        )
+        split = get_first_stat_split(data)
+        stat = (split or {}).get("stat", {}) if split else {}
+        profile["whip"] = safe_float(stat.get("whip"))
+        profile["era"] = safe_float(stat.get("era"))
+        if profile["whip"] is not None:
+            profile["available"] = True
+            if profile["whip"] >= 1.45:
+                profile["risk_score"] += 3
+                profile["notes"].append(f"High WHIP {profile['whip']:.2f}")
+            elif profile["whip"] >= HIGH_RUN_DAMAGE_WHIP:
+                profile["risk_score"] += 2
+                profile["notes"].append(f"Elevated WHIP {profile['whip']:.2f}")
+        if profile["era"] is not None:
+            if profile["era"] >= 5.00:
+                profile["risk_score"] += 2
+                profile["notes"].append(f"High ERA {profile['era']:.2f}")
+            elif profile["era"] >= 4.25:
+                profile["risk_score"] += 1
+                profile["notes"].append(f"Elevated ERA {profile['era']:.2f}")
+    except Exception as e:
+        profile["notes"].append(f"Season run-damage unavailable: {e}")
+
+    try:
+        ers, hits, ips = [], [], []
+        for r in (recent_rows or [])[:5]:
+            er = safe_float(r.get("ER", r.get("Earned Runs")))
+            h = safe_float(r.get("H", r.get("Hits")))
+            ip = safe_float(r.get("IP_float"))
+            if er is not None:
+                ers.append(er)
+            if h is not None:
+                hits.append(h)
+            if ip is not None:
+                ips.append(ip)
+        if ers:
+            profile["recent_er_avg"] = float(np.mean(ers))
+            profile["available"] = True
+            if profile["recent_er_avg"] >= HIGH_RUN_DAMAGE_RECENT_ER:
+                profile["risk_score"] += 3
+                profile["notes"].append(f"High recent ER avg {profile['recent_er_avg']:.1f}")
+            elif profile["recent_er_avg"] >= 3.0:
+                profile["risk_score"] += 2
+                profile["notes"].append(f"Elevated recent ER avg {profile['recent_er_avg']:.1f}")
+        if hits:
+            profile["recent_hits_avg"] = float(np.mean(hits))
+            if profile["recent_hits_avg"] >= 6.0:
+                profile["risk_score"] += 2
+                profile["notes"].append(f"High recent hits avg {profile['recent_hits_avg']:.1f}")
+            elif profile["recent_hits_avg"] >= 5.0:
+                profile["risk_score"] += 1
+                profile["notes"].append(f"Elevated recent hits avg {profile['recent_hits_avg']:.1f}")
+        if ips:
+            profile["recent_ip_avg"] = float(np.mean(ips))
+            if profile["recent_ip_avg"] < 5.0:
+                profile["risk_score"] += 2
+                profile["notes"].append(f"Recent IP short {profile['recent_ip_avg']:.1f}")
+    except Exception as e:
+        profile["notes"].append(f"Recent run-damage unavailable: {e}")
+
+    score = int(profile.get("risk_score", 0) or 0)
+    if not profile["available"]:
+        profile["risk_level"] = "UNKNOWN"
+        if not profile["notes"]:
+            profile["notes"].append("Run-damage inputs unavailable")
+    elif score >= 7:
+        profile["risk_level"] = "EXTREME"
+    elif score >= 5:
+        profile["risk_level"] = "HIGH"
+    elif score >= 3:
+        profile["risk_level"] = "MILD"
+    else:
+        profile["risk_level"] = "LOW"
+    return profile
+
+def opponent_contact_damage_profile(batter_pitch_rows=None):
+    out = {
+        "available": False,
+        "avg_contact": None,
+        "avg_slg_vs_pitch": None,
+        "risk_score": 0,
+        "risk_level": "UNKNOWN",
+        "notes": []
+    }
+    contacts, slgs = [], []
+    for r in (batter_pitch_rows or []):
+        c = safe_float(r.get("Per-Batter Contact%"))
+        s = safe_float(r.get("Per-Batter SLG vs Pitch"))
+        if c is not None:
+            contacts.append(c / 100.0 if c > 1 else c)
+        if s is not None:
+            slgs.append(s)
+
+    if contacts:
+        out["available"] = True
+        out["avg_contact"] = float(np.mean(contacts))
+        if out["avg_contact"] >= 0.79:
+            out["risk_score"] += 3
+            out["notes"].append(f"High opponent contact vs pitch mix {out['avg_contact']:.1%}")
+        elif out["avg_contact"] >= 0.75:
+            out["risk_score"] += 2
+            out["notes"].append(f"Elevated opponent contact vs pitch mix {out['avg_contact']:.1%}")
+    if slgs:
+        out["available"] = True
+        out["avg_slg_vs_pitch"] = float(np.mean(slgs))
+        if out["avg_slg_vs_pitch"] >= 0.560:
+            out["risk_score"] += 3
+            out["notes"].append(f"High opponent SLG vs pitch mix {out['avg_slg_vs_pitch']:.3f}")
+        elif out["avg_slg_vs_pitch"] >= HIGH_OPP_SLG_VS_PITCH:
+            out["risk_score"] += 2
+            out["notes"].append(f"Elevated opponent SLG vs pitch mix {out['avg_slg_vs_pitch']:.3f}")
+
+    score = int(out.get("risk_score", 0) or 0)
+    if not out["available"]:
+        out["risk_level"] = "UNKNOWN"
+        out["notes"].append("Opponent contact/SLG profile unavailable")
+    elif score >= 5:
+        out["risk_level"] = "HIGH"
+    elif score >= 3:
+        out["risk_level"] = "MILD"
+    else:
+        out["risk_level"] = "LOW"
+    return out
+
+def combined_game_script_risk(pitcher_damage, opponent_damage, line=None, side=None):
+    p_score = safe_int((pitcher_damage or {}).get("risk_score"), 0) or 0
+    o_score = safe_int((opponent_damage or {}).get("risk_score"), 0) or 0
+    total = p_score + o_score
+    ln = safe_float(line)
+    side_text = str(side or "").upper()
+
+    notes = []
+    notes.extend((pitcher_damage or {}).get("notes", [])[:3])
+    notes.extend((opponent_damage or {}).get("notes", [])[:3])
+
+    if total >= 9 or (pitcher_damage or {}).get("risk_level") == "EXTREME":
+        label, factor = "EXTREME", RUN_DAMAGE_BF_CUT_EXTREME
+    elif total >= 6 or (pitcher_damage or {}).get("risk_level") == "HIGH" or (opponent_damage or {}).get("risk_level") == "HIGH":
+        label, factor = "HIGH", RUN_DAMAGE_BF_CUT_HIGH
+    elif total >= 3 or (pitcher_damage or {}).get("risk_level") == "MILD" or (opponent_damage or {}).get("risk_level") == "MILD":
+        label, factor = "MILD", RUN_DAMAGE_BF_CUT_MILD
+    else:
+        label, factor = "LOW", 1.0
+
+    if "OVER" in side_text and ln is not None and ln >= 5.5 and label in ["MILD", "HIGH", "EXTREME"]:
+        factor = min(factor, 0.94 if label == "MILD" else 0.88 if label == "HIGH" else 0.82)
+        notes.append("Over line needs 6+ Ks; early-hook risk amplified")
+
+    return {
+        "label": label,
+        "factor": float(clamp(factor, 0.82, 1.0)),
+        "score": int(total),
+        "notes": " | ".join(notes[:8]) if notes else "No major run-damage risk detected"
+    }
+
+def apply_game_script_bf_cut(expected_bf, game_script_risk):
+    bf = safe_float(expected_bf)
+    if bf is None:
+        return expected_bf
+    factor = safe_float((game_script_risk or {}).get("factor"), 1.0) or 1.0
+    return float(clamp(bf * factor, 12, 31))
+
+def stronger_over_gate(side, prob, edge, source_label, game_script_risk, market_source_count=None):
+    if "OVER" not in str(side or "").upper():
+        return None
+    notes = []
+    p = safe_float(prob)
+    e = safe_float(edge)
+    label = (game_script_risk or {}).get("label", "UNKNOWN")
+
+    if p is not None and p < OVER_MIN_PROB_STRONG:
+        notes.append(f"stronger over gate: probability below {int(OVER_MIN_PROB_STRONG*100)}%")
+    if e is not None and e < OVER_MIN_EDGE_STRONG:
+        notes.append(f"stronger over gate: edge below {OVER_MIN_EDGE_STRONG:.2f} K")
+    if source_label != "TRUE LINEUP":
+        notes.append("stronger over gate: lineup not true/confirmed")
+    if label in ["HIGH", "EXTREME"]:
+        notes.append(f"stronger over gate: game-script risk {label}")
+    if market_source_count is not None and safe_int(market_source_count, 0) <= 1:
+        notes.append("market confirmation rule: only one market source")
+    return "; ".join(notes) if notes else None
+
+
+# =========================
+# v11.6 REPEAT MATCHUP / FAMILIARITY LAYER
+# =========================
+@st.cache_data(ttl=900, show_spinner=False)
+def pitcher_recent_opponent_familiarity(pitcher_id, opponent_team_name=None, opponent_abbrev=None, lookback_days=21):
+    """Small repeat-opponent familiarity factor.
+
+    If a pitcher faced this same opponent recently, hitters may have a small timing/recognition edge.
+    This is intentionally capped and only cuts Ks slightly. Missing data stays neutral.
+    """
+    result = {
+        "available": False,
+        "factor": 1.0,
+        "recent_matchups": 0,
+        "last_days_ago": None,
+        "label": "NEUTRAL",
+        "note": "No recent same-opponent matchup found"
+    }
+    if not pitcher_id:
+        return result
+
+    data = safe_get_json(
+        f"{MLB_BASE}/people/{pitcher_id}/stats",
+        params={"stats": "gameLog", "group": "pitching"},
+        timeout=12,
+    )
+    if not isinstance(data, dict):
+        result["note"] = "Pitcher game log unavailable for repeat-matchup check"
+        return result
+
+    try:
+        splits = data["stats"][0]["splits"]
+    except Exception:
+        result["note"] = "Pitcher game log missing splits for repeat-matchup check"
+        return result
+
+    opp_norms = set()
+    for v in [opponent_team_name, opponent_abbrev]:
+        if v:
+            opp_norms.add(normalize_name(v))
+    if not opp_norms:
+        result["note"] = "Opponent name unavailable for repeat-matchup check"
+        return result
+
+    today = california_now().date()
+    matches = []
+
+    for g in splits:
+        try:
+            gdate = datetime.strptime(g.get("date", ""), "%Y-%m-%d").date()
+        except Exception:
+            continue
+        days_ago = (today - gdate).days
+        if days_ago < 0 or days_ago > int(lookback_days):
+            continue
+
+        opp_obj = g.get("opponent", {}) or {}
+        opp_values = [
+            opp_obj.get("name"),
+            opp_obj.get("abbreviation"),
+            opp_obj.get("teamName"),
+            opp_obj.get("clubName"),
+        ]
+        opp_game_norms = {normalize_name(x) for x in opp_values if x}
+        if opp_norms & opp_game_norms:
+            matches.append(days_ago)
+
+    if not matches:
+        return result
+
+    matches = sorted(matches)
+    n = len(matches)
+    last_days = matches[0]
+    factor = 1.0
+    label = "LOW"
+
+    if n >= 2 and last_days <= 21:
+        factor = REPEAT_MATCHUP_MULTI_RECENT_FACTOR
+        label = "HIGH"
+    elif last_days <= 7:
+        factor = REPEAT_MATCHUP_SAME_7D_FACTOR
+        label = "HIGH"
+    elif last_days <= 14:
+        factor = REPEAT_MATCHUP_SAME_14D_FACTOR
+        label = "MILD"
+    elif last_days <= 21:
+        factor = REPEAT_MATCHUP_SAME_21D_FACTOR
+        label = "LOW"
+
+    factor = float(clamp(factor, REPEAT_MATCHUP_FACTOR_MIN, REPEAT_MATCHUP_FACTOR_MAX))
+    return {
+        "available": True,
+        "factor": factor,
+        "recent_matchups": int(n),
+        "last_days_ago": int(last_days),
+        "label": label,
+        "note": f"Repeat opponent familiarity {label}: faced opponent {n} time(s) in last {lookback_days} days; most recent {last_days} day(s) ago; K factor x{factor:.3f}"
+    }
+
+def apply_repeat_matchup_factor(k_rate, repeat_profile):
+    kr = safe_float(k_rate)
+    if kr is None:
+        return k_rate, "Repeat matchup factor skipped; missing K rate"
+    factor = safe_float((repeat_profile or {}).get("factor"), 1.0) or 1.0
+    return float(clamp(kr * factor, 0.08, 0.50)), (repeat_profile or {}).get("note", "Repeat matchup neutral")
+
 # =========================
 # STATCAST
 # =========================
@@ -1432,13 +2482,27 @@ def apply_pitch_type_matchup_adjustment(pitcher_k, pitcher_statcast, enabled=Tru
 
 @st.cache_data(ttl=21600, show_spinner=False)
 def get_batter_statcast_pitch_type_profile(batter_id, days=365, pitcher_hand=None):
-    """Real batter whiff profile by pitch type from Baseball Savant.
+    """Real per-batter Statcast profile by pitch type.
 
-    This never estimates missing data. If Statcast is unavailable or too thin, no adjustment is applied.
+    Adds:
+    - per-batter whiff% by pitch type
+    - per-batter contact% by pitch type
+    - per-batter SLG vs pitch type from real batted-ball outcomes
+    - overall batter whiff/contact profile
+
+    Missing or thin data stays neutral. Nothing is guessed.
     """
-    empty = {"available": False, "message": "No batter id", "rows": 0, "pitch_type_profile": []}
+    empty = {
+        "available": False,
+        "message": "No batter id",
+        "rows": 0,
+        "overall_whiff": None,
+        "overall_contact": None,
+        "pitch_type_profile": []
+    }
     if not batter_id:
         return empty
+
     end = datetime.now()
     start = end - timedelta(days=int(days))
     url = "https://baseballsavant.mlb.com/statcast_search/csv"
@@ -1450,66 +2514,145 @@ def get_batter_statcast_pitch_type_profile(batter_id, days=365, pitcher_hand=Non
         "game_date_lt": end.strftime("%Y-%m-%d"),
         "type": "details",
     }
+
+    def _event_total_bases(ev):
+        ev = str(ev or "").lower()
+        if ev == "single":
+            return 1
+        if ev == "double":
+            return 2
+        if ev == "triple":
+            return 3
+        if ev == "home_run":
+            return 4
+        return 0
+
+    def _is_ab_event(ev):
+        ev = str(ev or "").lower()
+        if not ev or ev in ["nan", "none"]:
+            return False
+        non_ab = {
+            "walk", "intent_walk", "hit_by_pitch", "sac_bunt", "sac_fly",
+            "catcher_interf", "sac_fly_double_play", "sac_bunt_double_play"
+        }
+        return ev not in non_ab
+
     try:
         r = requests.get(url, params=params, timeout=25, headers={"User-Agent": "Mozilla/5.0"})
         if r.status_code != 200 or not r.text.strip():
             empty["message"] = f"Batter Statcast HTTP {r.status_code}"
             return empty
+
         df = pd.read_csv(io.StringIO(r.text), low_memory=False)
         if df.empty or "description" not in df.columns or "pitch_type" not in df.columns:
             empty["message"] = "Batter Statcast returned no pitch-type rows"
             return empty
-        # Use hand split only if the split sample is not tiny. Otherwise use all pitcher hands.
+
+        # Use pitcher-hand split only if enough real rows exist; otherwise keep full batter sample.
         if pitcher_hand in ["R", "L"] and "p_throws" in df.columns:
             hand_df = df[df["p_throws"].astype(str).str.upper() == pitcher_hand].copy()
             if len(hand_df) >= 25:
                 df = hand_df
+
         desc = df["description"].astype(str).str.lower()
         whiff_mask = desc.isin(["swinging_strike", "swinging_strike_blocked", "foul_tip"])
         swing_mask = desc.isin([
             "swinging_strike", "swinging_strike_blocked", "foul_tip", "foul", "foul_bunt",
             "missed_bunt", "hit_into_play", "hit_into_play_no_out", "hit_into_play_score"
         ])
+        contact_mask = swing_mask & (~whiff_mask)
+
         df2 = df.copy()
         df2["pitch_type"] = df2["pitch_type"].fillna("UNK").astype(str)
         df2["_whiff"] = whiff_mask.astype(int)
         df2["_swing"] = swing_mask.astype(int)
+        df2["_contact"] = contact_mask.astype(int)
+
+        if "events" in df2.columns:
+            df2["_ab_event"] = df2["events"].apply(_is_ab_event).astype(int)
+            df2["_total_bases"] = df2["events"].apply(_event_total_bases).astype(float)
+        else:
+            df2["_ab_event"] = 0
+            df2["_total_bases"] = 0.0
+
+        overall_swings = int(df2["_swing"].sum())
+        overall_whiffs = int(df2["_whiff"].sum())
+        overall_contacts = int(df2["_contact"].sum())
+        overall_whiff = overall_whiffs / overall_swings if overall_swings > 0 else None
+        overall_contact = overall_contacts / overall_swings if overall_swings > 0 else None
+
         grouped = df2.groupby("pitch_type").agg(
             Pitches=("pitch_type", "size"),
             Whiffs=("_whiff", "sum"),
             Swings=("_swing", "sum"),
+            Contacts=("_contact", "sum"),
+            ABEvents=("_ab_event", "sum"),
+            TotalBases=("_total_bases", "sum"),
         ).reset_index()
+
         grouped = grouped[grouped["Swings"] >= 5]
         if grouped.empty:
             empty["message"] = "Batter Statcast has too few swings by pitch type"
             return empty
+
         grouped["WhiffRate"] = grouped["Whiffs"] / grouped["Swings"].replace(0, np.nan)
+        grouped["ContactRate"] = grouped["Contacts"] / grouped["Swings"].replace(0, np.nan)
+        grouped["SLG"] = grouped["TotalBases"] / grouped["ABEvents"].replace(0, np.nan)
+
         profile = []
         for _, row in grouped.iterrows():
             wr = safe_float(row["WhiffRate"])
+            cr = safe_float(row["ContactRate"])
+            slg = safe_float(row["SLG"])
             if wr is None or pd.isna(wr):
                 continue
             profile.append({
                 "Pitch Type": str(row["pitch_type"]),
                 "Batter Whiff%": round(wr * 100, 1),
+                "Batter Contact%": None if cr is None or pd.isna(cr) else round(cr * 100, 1),
+                "Batter SLG vs Pitch": None if slg is None or pd.isna(slg) else round(slg, 3),
                 "Swings": int(row["Swings"]),
+                "Contacts": int(row["Contacts"]),
                 "Pitches Seen": int(row["Pitches"]),
+                "AB Events": int(row["ABEvents"]),
+                "Total Bases": int(row["TotalBases"]),
             })
+
         if not profile:
-            empty["message"] = "No batter pitch-type whiff rows passed sample filter"
+            empty["message"] = "No batter pitch-type rows passed sample filter"
             return empty
-        return {"available": True, "message": "Real batter Statcast pitch-type whiff loaded", "rows": int(len(df)), "pitch_type_profile": profile}
+
+        return {
+            "available": True,
+            "message": "Real batter Statcast pitch-type whiff/contact/SLG loaded",
+            "rows": int(len(df)),
+            "overall_whiff": None if overall_whiff is None else float(overall_whiff),
+            "overall_contact": None if overall_contact is None else float(overall_contact),
+            "pitch_type_profile": profile
+        }
     except Exception as e:
         empty["message"] = f"Batter Statcast unavailable: {e}"
         return empty
 
 
 def build_pitch_type_matchup_profile(pitcher_statcast, lineup_rows, enabled=True, min_batters=5, pitcher_hand=None):
-    """Compare real pitcher pitch mix to real batter whiff by pitch type.
+    """Compare real pitcher pitch mix to real batter pitch-type profiles.
 
-    Applies only when enough real batter Statcast profiles load. Missing pitch types are ignored, not guessed.
+    v11.3 adds per-batter:
+    - K% already supplied from lineup_rows
+    - SLG vs pitch type
+    - contact% / whiff% by pitch type
+
+    Missing pitch types are ignored, never guessed.
     """
-    result = {"available": False, "factor": 1.0, "message": "Pitch-type matchup disabled or unavailable", "rows": [], "batters_loaded": 0}
+    result = {
+        "available": False,
+        "factor": 1.0,
+        "message": "Pitch-type matchup disabled or unavailable",
+        "rows": [],
+        "batter_rows": [],
+        "batters_loaded": 0
+    }
     if not enabled:
         result["message"] = "Pitch-type matchup disabled"
         return result
@@ -1532,13 +2675,45 @@ def build_pitch_type_matchup_profile(pitcher_statcast, lineup_rows, enabled=True
     pitch_types = [pt for pt, use in pitcher_usage.items() if pt and use >= 0.03]
 
     batter_profiles = []
+    batter_detail_rows = []
+
     for r in lineup_rows[:9]:
         bid = r.get("Player ID")
+        batter_name = r.get("Batter")
         prof = get_batter_statcast_pitch_type_profile(bid, days=365, pitcher_hand=pitcher_hand)
         if prof.get("available"):
             by_pt = {x.get("Pitch Type"): x for x in prof.get("pitch_type_profile", [])}
-            batter_profiles.append({"Batter": r.get("Batter"), "by_pt": by_pt})
+            batter_profiles.append({
+                "Batter": batter_name,
+                "Order": r.get("Order"),
+                "Used K%": r.get("Used K%"),
+                "Raw_K_Rate": r.get("Raw_K_Rate"),
+                "Overall Contact%": None if prof.get("overall_contact") is None else round(prof.get("overall_contact") * 100, 1),
+                "Overall Whiff%": None if prof.get("overall_whiff") is None else round(prof.get("overall_whiff") * 100, 1),
+                "by_pt": by_pt
+            })
+
+            for pt, prow in by_pt.items():
+                if pt not in pitch_types:
+                    continue
+                batter_detail_rows.append({
+                    "Order": r.get("Order"),
+                    "Batter": batter_name,
+                    "Player ID": bid,
+                    "Pitch Type": pt,
+                    "Pitcher Usage %": round((pitcher_usage.get(pt, 0) or 0) * 100, 1),
+                    "Per-Batter K%": r.get("Used K%"),
+                    "Per-Batter Contact%": prow.get("Batter Contact%"),
+                    "Per-Batter Whiff%": prow.get("Batter Whiff%"),
+                    "Per-Batter SLG vs Pitch": prow.get("Batter SLG vs Pitch"),
+                    "Swings": prow.get("Swings"),
+                    "Pitches Seen": prow.get("Pitches Seen"),
+                    "AB Events": prow.get("AB Events"),
+                })
+
     result["batters_loaded"] = len(batter_profiles)
+    result["batter_rows"] = batter_detail_rows
+
     if len(batter_profiles) < min_batters:
         result["message"] = f"Only {len(batter_profiles)}/9 batter pitch-type profiles loaded; no adjustment applied"
         return result
@@ -1546,51 +2721,100 @@ def build_pitch_type_matchup_profile(pitcher_statcast, lineup_rows, enabled=True
     rows = []
     weighted_index = 0.0
     used_weight = 0.0
+
     for pt in pitch_types:
         use = pitcher_usage.get(pt, 0) or 0
-        batter_rates = []
+        batter_whiff_rates = []
+        batter_contact_rates = []
+        batter_slg_rates = []
         batter_swings = 0
+        slg_ab_events = 0
+
         for bp in batter_profiles:
             row = bp["by_pt"].get(pt)
             if not row:
                 continue
+
             wr = safe_float(row.get("Batter Whiff%"))
+            cr = safe_float(row.get("Batter Contact%"))
+            slg = safe_float(row.get("Batter SLG vs Pitch"))
             swings = safe_int(row.get("Swings"), 0) or 0
+            ab_events = safe_int(row.get("AB Events"), 0) or 0
+
             if wr is not None and swings >= 5:
-                batter_rates.append(wr / 100.0)
+                batter_whiff_rates.append(wr / 100.0)
                 batter_swings += swings
-        if len(batter_rates) < 3:
+            if cr is not None and swings >= 5:
+                batter_contact_rates.append(cr / 100.0)
+            if slg is not None and ab_events >= 2:
+                batter_slg_rates.append(slg)
+                slg_ab_events += ab_events
+
+        if len(batter_whiff_rates) < 3:
             continue
-        avg_batter_whiff = float(np.mean(batter_rates))
+
+        avg_batter_whiff = float(np.mean(batter_whiff_rates))
+        avg_batter_contact = float(np.mean(batter_contact_rates)) if batter_contact_rates else None
+        avg_batter_slg = float(np.mean(batter_slg_rates)) if batter_slg_rates else None
+
         league_ref = LEAGUE_AVG_WHIFF_BY_PITCH_TYPE.get(pt, 0.25)
         pitcher_wr = pitcher_whiff.get(pt)
+
         pitcher_bonus = 1.0
         if pitcher_wr is not None:
             pitcher_bonus = clamp(pitcher_wr / max(league_ref, 0.01), 0.85, 1.18)
-        batter_index = avg_batter_whiff / max(league_ref, 0.01)
-        combined_index = clamp((batter_index * 0.70) + (pitcher_bonus * 0.30), 0.82, 1.22)
+
+        batter_whiff_index = avg_batter_whiff / max(league_ref, 0.01)
+
+        # Contact and SLG protect against fake K boosts when hitters see a pitch well.
+        contact_guard = 1.0
+        if avg_batter_contact is not None:
+            if avg_batter_contact >= 0.78:
+                contact_guard = 0.96
+            elif avg_batter_contact <= 0.64:
+                contact_guard = 1.04
+
+        slg_guard = 1.0
+        if avg_batter_slg is not None:
+            if avg_batter_slg >= 0.520:
+                slg_guard = 0.97
+            elif avg_batter_slg <= 0.300:
+                slg_guard = 1.03
+
+        combined_index = (batter_whiff_index * 0.60) + (pitcher_bonus * 0.25) + (contact_guard * 0.10) + (slg_guard * 0.05)
+        combined_index = clamp(combined_index, 0.82, 1.22)
+
         weighted_index += use * combined_index
         used_weight += use
+
         rows.append({
             "Pitch Type": pt,
             "Pitcher Usage %": round(use * 100, 1),
             "Avg Batter Whiff%": round(avg_batter_whiff * 100, 1),
+            "Avg Batter Contact%": None if avg_batter_contact is None else round(avg_batter_contact * 100, 1),
+            "Avg Batter SLG vs Pitch": None if avg_batter_slg is None else round(avg_batter_slg, 3),
             "League Ref Whiff%": round(league_ref * 100, 1),
             "Pitcher Whiff%": None if pitcher_wr is None else round(pitcher_wr * 100, 1),
+            "Contact Guard": round(contact_guard, 3),
+            "SLG Guard": round(slg_guard, 3),
             "Index": round(combined_index, 3),
-            "Batter Profiles Used": len(batter_rates),
+            "Batter Profiles Used": len(batter_whiff_rates),
             "Batter Swings": batter_swings,
+            "SLG AB Events": slg_ab_events,
         })
+
     if used_weight <= 0 or not rows:
         result["message"] = "No overlapping pitcher/batter pitch-type rows passed sample filter"
         return result
+
     avg_index = weighted_index / used_weight
     factor = clamp(1 + ((avg_index - 1) * 0.10), 0.965, 1.035)
     result.update({
         "available": True,
         "factor": factor,
-        "message": f"Real batter-vs-pitch-type matchup x{factor:.3f} ({len(batter_profiles)}/9 batters loaded)",
+        "message": f"Real per-batter K/contact/whiff/SLG pitch-type matchup x{factor:.3f} ({len(batter_profiles)}/9 batters loaded)",
         "rows": rows,
+        "batter_rows": batter_detail_rows,
     })
     return result
 
@@ -1743,9 +2967,21 @@ def weather_k_factor(venue_name, game_time, enabled=True):
         if precip is not None and precip >= 35:
             factor -= 0.006
 
-        factor = float(clamp(factor, WEATHER_FACTOR_MIN, WEATHER_FACTOR_MAX))
-        details = {"temp_f": temp, "wind_mph": wind, "humidity": humidity, "precip_prob": precip, "indoor": False}
-        note = f"Weather x{factor:.3f}: {temp if temp is not None else 'NA'}F, wind {wind if wind is not None else 'NA'} mph, humidity {humidity if humidity is not None else 'NA'}%, precip {precip if precip is not None else 'NA'}%"
+        # v11.9 Density Altitude style adjustment. This is intentionally small:
+        # heat + humidity can reduce pitch movement/whiffs, while cool/dry air can
+        # slightly help. We multiply it into the existing weather factor and cap it.
+        da_factor = 1.0
+        da_note = "DA neutral"
+        if temp is not None and humidity is not None:
+            temp_effect = (temp - 70.0) * 0.0012
+            humidity_effect = (humidity - 50.0) * 0.0005
+            da_impact = temp_effect + humidity_effect
+            da_factor = float(clamp(1.0 - (da_impact * 0.15), DA_K_FACTOR_MIN, DA_K_FACTOR_MAX))
+            da_note = f"DA x{da_factor:.3f}"
+
+        factor = float(clamp(factor * da_factor, min(WEATHER_FACTOR_MIN, DA_K_FACTOR_MIN), max(WEATHER_FACTOR_MAX, DA_K_FACTOR_MAX)))
+        details = {"temp_f": temp, "wind_mph": wind, "humidity": humidity, "precip_prob": precip, "indoor": False, "density_altitude_factor": round(da_factor, 3)}
+        note = f"Weather x{factor:.3f} ({da_note}): {temp if temp is not None else 'NA'}F, wind {wind if wind is not None else 'NA'} mph, humidity {humidity if humidity is not None else 'NA'}%, precip {precip if precip is not None else 'NA'}%"
         return factor, note, details
     except Exception as e:
         return 1.0, f"Weather error; neutral: {e}", {}
@@ -2751,7 +3987,8 @@ def no_bet_gate(active_line, pick_side, fair_prob, ev, gap, score, lineup_locked
         reasons.append("no validated market consensus")
     if consensus_info.get("rejected"):
         reasons.append("one or more source lines rejected as outliers")
-    if consensus_info.get("count", 0) < 2:
+    underdog_exact = ("underdog" in str(line_source).lower()) and consensus_info.get("quality") == "UNDERDOG_EXACT"
+    if consensus_info.get("count", 0) < 2 and not underdog_exact:
         reasons.append("not enough market sources")
 
     # Pitcher volume/leash is the main K-prop trap.
@@ -2872,6 +4109,46 @@ def make_projection(row, bankroll, default_odds, use_statcast, use_pitch_type, u
         if not pitch_type_available:
             pitch_type_note = matchup_profile.get("message", pitch_type_note)
 
+    batter_pitch_profile_rows = matchup_profile.get("batter_rows", []) if isinstance(matchup_profile, dict) else []
+
+    # v11.4 run-damage / game-script risk
+    try:
+        pitcher_damage_profile = pitcher_run_damage_profile(pid, recent_rows=recent_rows, statcast_profile=statcast_profile)
+        opponent_damage_profile = opponent_contact_damage_profile(batter_pitch_profile_rows if "batter_pitch_profile_rows" in locals() else [])
+        game_script_risk = combined_game_script_risk(pitcher_damage_profile, opponent_damage_profile)
+        leash["expected_bf"] = apply_game_script_bf_cut(leash.get("expected_bf"), game_script_risk)
+        game_script_note = f"{game_script_risk.get('label')} | factor {game_script_risk.get('factor'):.2f} | {game_script_risk.get('notes')}"
+    except Exception as _gs_e:
+        pitcher_damage_profile = {"risk_level": "UNKNOWN", "risk_score": 0, "notes": [str(_gs_e)]}
+        opponent_damage_profile = {"risk_level": "UNKNOWN", "risk_score": 0, "notes": []}
+        game_script_risk = {"label": "UNKNOWN", "factor": 1.0, "score": 0, "notes": f"Game-script risk skipped: {_gs_e}"}
+        game_script_note = game_script_risk.get("notes")
+
+    # v11.9 manager hook / TTTO volume upgrade. Applied after base leash and
+    # game-script risk, before bullpen factor, so final BF still respects bullpen context.
+    try:
+        hooked_bf, manager_hook_status, manager_hook_note = apply_managerial_hook_v11_9(leash.get("expected_bf"), recent_rows)
+        leash["expected_bf"] = hooked_bf
+        leash["manager_hook_status"] = manager_hook_status
+        leash["manager_hook_note"] = manager_hook_note
+    except Exception as _hook_e:
+        manager_hook_status = "UNKNOWN"
+        manager_hook_note = f"Manager hook skipped: {_hook_e}"
+        leash["manager_hook_status"] = manager_hook_status
+        leash["manager_hook_note"] = manager_hook_note
+
+    # v11.6 repeat opponent familiarity
+    try:
+        repeat_matchup_profile = pitcher_recent_opponent_familiarity(
+            pid,
+            opponent_team_name=row.get("opponent", row.get("opp_team", "")) if isinstance(row, dict) else "",
+            opponent_abbrev=row.get("opponent", "") if isinstance(row, dict) else "",
+            lookback_days=REPEAT_MATCHUP_LOOKBACK_DAYS,
+        )
+    except Exception as _rep_e:
+        repeat_matchup_profile = {"available": False, "factor": 1.0, "label": "UNKNOWN", "note": f"Repeat matchup skipped: {_rep_e}"}
+    repeat_matchup_note = repeat_matchup_profile.get("note", "Repeat matchup neutral")
+
     calibration_profile = build_model_calibration_profile(load_json(RESULT_LOG, []))
     pitcher_k, calibration_note = apply_calibration_adjustment(pitcher_k, calibration_profile, enabled=use_calibration)
 
@@ -2879,12 +4156,26 @@ def make_projection(row, bankroll, default_odds, use_statcast, use_pitch_type, u
     opp_context_factor, opp_context_note = opponent_k_context_factor(lineup_k)
     matchup_k = clamp(matchup_k * opp_context_factor, 0.03, 0.60)
     ump_mult, ump_name, umpire_note = umpire_factor(row["game_pk"], enabled=use_umpire)
+    try:
+        ump_learn_mult, ump_learn_note, ump_learn_key = umpire_learning_k_factor(ump_name) if use_umpire else (1.0, "Umpire learning off", None)
+        ump_mult = float(clamp(ump_mult * ump_learn_mult, UMPIRE_FACTOR_MIN - UMPIRE_LEARN_MAX_K_ADJ, UMPIRE_FACTOR_MAX + UMPIRE_LEARN_MAX_K_ADJ))
+        umpire_note = f"{umpire_note}; {ump_learn_note}"
+    except Exception as _ump_learn_e:
+        ump_learn_mult, ump_learn_key = 1.0, None
+        umpire_note = f"{umpire_note}; umpire learning skipped: {_ump_learn_e}"
     park = park_k_factor(row.get("venue"))
     weather_mult, weather_note, weather_details = weather_k_factor(row.get("venue"), row.get("game_time"), enabled=use_weather)
     env_mult = float(clamp(park * ump_mult * weather_mult, 0.94, 1.06))
 
     bf = leash["expected_bf"]
     bullpen_factor, bullpen_note, bullpen_usage = bullpen_fatigue_bf_factor(row.get("team_id"), row.get("date"))
+    try:
+        bullpen_learn_factor, bullpen_learn_note, bullpen_learn_key = bullpen_learning_bf_factor(bullpen_usage)
+        bullpen_factor = float(clamp(bullpen_factor * bullpen_learn_factor, 0.94, 1.06))
+        bullpen_note = f"{bullpen_note}; {bullpen_learn_note}"
+    except Exception as _bp_learn_e:
+        bullpen_learn_factor, bullpen_learn_key = 1.0, None
+        bullpen_note = f"{bullpen_note}; bullpen learning skipped: {_bp_learn_e}"
     bf = float(clamp(bf * bullpen_factor, 14, 31))
     batter_rates, simulation_source = build_pa_sequence(lineup_rows if lineup_locked else [], bf, lineup_k)
 
@@ -2955,6 +4246,24 @@ def make_projection(row, bankroll, default_odds, use_statcast, use_pitch_type, u
 
     active_line, active_source, consensus = choose_active_line(sportsbook_data, pp_data, ud_data, sgo_data, optic_data)
 
+    # v11.8 TRUE CALIBRATION ENGINE:
+    # Uses only graded official snapshots. It shifts projection slightly by proven bias buckets,
+    # then probability calibration later corrects overconfidence/noise.
+    pre_calibration_mean = float(mean)
+    pre_calibration_p10 = float(p10)
+    pre_calibration_p90 = float(p90)
+    calibration_context_pre = current_calibration_context(
+        row, mean, active_line, active_source, fair_probability=None,
+        price_is_real=False, score=preliminary_score, risk_label=None, p10=p10, p90=p90
+    )
+    mean, sims, true_projection_calibration = apply_true_projection_calibration(
+        mean, sims, calibration_context_pre, calibration_profile, enabled=use_calibration
+    )
+    if true_projection_calibration.get("active"):
+        median = float(np.median(sims))
+        p10 = float(np.percentile(sims, 10))
+        p90 = float(np.percentile(sims, 90))
+
     # NOTE: CLV/line tracking updates on refresh because it tracks market movement.
     # Official pick history is only saved when you press "SAVE OFFICIAL BEFORE-GAME SNAPSHOT".
     line_delta = update_clv_snapshot(pitcher_name, active_source, active_line) if active_line is not None else None
@@ -2979,7 +4288,11 @@ def make_projection(row, bankroll, default_odds, use_statcast, use_pitch_type, u
     if active_line is None:
         pick_side = "NO LINE"
         fair_prob = None
+        fair_prob_raw_after_market = None
+        true_probability_calibration = {"active": False, "shift": 0.0, "note": "No line/probability to calibrate"}
         price = None
+        price_is_real = False
+        price_source = "NO LINE"
         no_vig = None
         ev = None
         kelly = 0.0
@@ -2988,30 +4301,60 @@ def make_projection(row, bankroll, default_odds, use_statcast, use_pitch_type, u
     else:
         pick_side = "OVER" if mean > active_line else "UNDER"
         fair_prob = over_prob if pick_side == "OVER" else under_prob
-        price = default_odds
+
+        # Price handling fix:
+        # - If a real sportsbook/odds source has a matching side+line, use it.
+        # - If not, keep a clearly labeled estimated EV using the sidebar default odds.
+        #   This avoids silently presenting default -110 as a real market price.
+        price = None
+        price_is_real = False
+        price_source = "NO REAL PRICE"
         priced_rows = []
         for src in [sportsbook_data, sgo_data, optic_data]:
             priced_rows.extend(src.get("rows", []))
         matching_priced = []
         for r in priced_rows:
             if safe_float(r.get("Line")) == safe_float(active_line) and pick_side in str(r.get("Side", "")).upper():
-                matching_priced.append(r)
+                if safe_float(r.get("Price")) is not None:
+                    matching_priced.append(r)
         if matching_priced:
             best = sorted(matching_priced, key=lambda x: expected_value(fair_prob, x.get("Price")) or -999)[-1]
-            price = safe_float(best.get("Price"), default_odds)
+            price = safe_float(best.get("Price"))
+            price_is_real = True
+            price_source = str(best.get("Source") or best.get("Provider") or "Real sportsbook price")
             no_vig = paired_no_vig_probability(priced_rows, best)
         else:
+            # Underdog/PrizePicks style entries often have a real line but no American odds.
+            # Use this only as an estimate for sorting/visibility, not as a real price.
+            price = safe_float(default_odds, -110.0) or -110.0
+            price_source = "ESTIMATED FROM DEFAULT ODDS"
             no_vig = american_to_implied(price)
+
+        true_prob_context = current_calibration_context(
+            row, mean, active_line, active_source, fair_probability=fair_prob,
+            price_is_real=price_is_real, score=score, risk_label=None, p10=p10, p90=p90
+        )
+        fair_prob_raw_after_market = fair_prob
+        fair_prob, true_probability_calibration = apply_true_probability_calibration(
+            fair_prob, true_prob_context, calibration_profile, enabled=use_calibration
+        )
+        if pick_side == "OVER":
+            over_prob = fair_prob
+            under_prob = 1 - fair_prob if fair_prob is not None else None
+        elif pick_side == "UNDER":
+            under_prob = fair_prob
+            over_prob = 1 - fair_prob if fair_prob is not None else None
+
         ev = expected_value(fair_prob, price)
         raw_kelly = kelly_fraction(fair_prob, price)
-        kelly = min(raw_kelly, MAX_RECOMMENDED_KELLY)
+        kelly = min(raw_kelly, MAX_RECOMMENDED_KELLY) if raw_kelly is not None else 0.0
         edge_pct = ((fair_prob - no_vig) * 100) if no_vig is not None and fair_prob is not None else None
         gap = abs(mean - active_line)
 
     risk_label, risk_notes = classify_risk(
         fair_prob,
         score,
-        priced=(active_line is not None),
+        priced=bool(price_is_real or ("underdog" in str(active_source).lower())),
         edge_pct=edge_pct if edge_pct is not None else -999,
         gap=gap if gap is not None else 0,
         line_source=active_source
@@ -3040,6 +4383,15 @@ def make_projection(row, bankroll, default_odds, use_statcast, use_pitch_type, u
         else:
             signal = "PASS"
         risk_notes = (risk_notes + "; " if risk_notes else "") + "No-bet gate: " + "; ".join(no_bet_reasons)
+
+    if active_line is not None and not price_is_real:
+        risk_notes = (risk_notes + "; " if risk_notes else "") + "EV/odds are estimated from sidebar default odds, not a real sportsbook price"
+
+    # Add transparent calibration notes to the card/debug output.
+    if true_projection_calibration.get("note"):
+        risk_notes = (risk_notes + "; " if risk_notes else "") + true_projection_calibration.get("note")
+    if true_probability_calibration.get("note"):
+        risk_notes = (risk_notes + "; " if risk_notes else "") + true_probability_calibration.get("note")
 
     prop_rows = []
     for src in [sportsbook_data, pp_data, ud_data, sgo_data, optic_data]:
@@ -3071,6 +4423,15 @@ def make_projection(row, bankroll, default_odds, use_statcast, use_pitch_type, u
             rr["Bullpen IP"] = bullpen_usage.get("bullpen_ip") if isinstance(bullpen_usage, dict) else None
             rr["Bullpen Fatigue Factor"] = round(safe_float(bullpen_factor, 1.0), 3)
             rr["Bullpen Fatigue Note"] = bullpen_note
+            rr["Game Script Risk"] = game_script_risk.get("label", "UNKNOWN") if "game_script_risk" in locals() else "UNKNOWN"
+            rr["Game Script Note"] = game_script_note if "game_script_note" in locals() else ""
+            rr["Manager Hook"] = leash.get("manager_hook_status")
+            rr["Manager Hook Note"] = leash.get("manager_hook_note")
+            rr["Repeat Matchup"] = repeat_matchup_profile.get("label", "NEUTRAL") if "repeat_matchup_profile" in locals() else "NEUTRAL"
+            rr["Repeat Matchup Note"] = repeat_matchup_note if "repeat_matchup_note" in locals() else (repeat_matchup_profile.get("note", "") if "repeat_matchup_profile" in locals() else "")
+            rr["Run Damage Risk"] = pitcher_damage_profile.get("risk_level", "UNKNOWN") if "pitcher_damage_profile" in locals() else "UNKNOWN"
+            rr["Opponent Damage Risk"] = opponent_damage_profile.get("risk_level", "UNKNOWN") if "opponent_damage_profile" in locals() else "UNKNOWN"
+            rr["Pitch-Type Batter Detail Rows"] = len(batter_pitch_profile_rows) if "batter_pitch_profile_rows" in locals() else 0
             prop_rows.append(rr)
 
     pick_id = f"{row['date']}_{row['game_pk']}_{pid}_{active_line}_{active_source}"
@@ -3109,6 +4470,8 @@ def make_projection(row, bankroll, default_odds, use_statcast, use_pitch_type, u
         "xgboost_note": xgb_info.get("message"),
         "umpire": ump_name,
         "ump_factor": round(ump_mult, 3),
+        "umpire_learning_factor": round(safe_float(locals().get("ump_learn_mult", 1.0), 1.0), 3),
+        "umpire_learning_key": locals().get("ump_learn_key"),
         "umpire_note": umpire_note,
         "weather_enabled": bool(use_weather),
         "weather_factor": round(weather_mult, 3),
@@ -3123,7 +4486,15 @@ def make_projection(row, bankroll, default_odds, use_statcast, use_pitch_type, u
         "leash_risk": leash.get("leash_risk"),
         "bullpen_status": bullpen_usage.get("label") if isinstance(bullpen_usage, dict) else None,
         "bullpen_bf_factor": round(safe_float(bullpen_factor, 1.0), 3),
+        "bullpen_learning_factor": round(safe_float(locals().get("bullpen_learn_factor", 1.0), 1.0), 3),
+        "bullpen_learning_key": locals().get("bullpen_learn_key"),
         "bullpen_note": bullpen_note,
+        "game_script_risk": game_script_risk,
+        "game_script_note": game_script_note,
+        "repeat_matchup_profile": repeat_matchup_profile,
+        "repeat_matchup_note": repeat_matchup_note if "repeat_matchup_note" in locals() else repeat_matchup_profile.get("note", ""),
+        "pitcher_damage_profile": pitcher_damage_profile,
+        "opponent_damage_profile": opponent_damage_profile,
         "bullpen_recent_games": bullpen_usage.get("games") if isinstance(bullpen_usage, dict) else None,
         "bullpen_recent_ip": bullpen_usage.get("bullpen_ip") if isinstance(bullpen_usage, dict) else None,
         "bullpen_recent_pitches": bullpen_usage.get("bullpen_pitches") if isinstance(bullpen_usage, dict) else None,
@@ -3132,9 +4503,13 @@ def make_projection(row, bankroll, default_odds, use_statcast, use_pitch_type, u
         "recent_ip": round(leash["recent_ip"], 2),
         "last_10_ks": leash["last_10_ks"],
         "projection": round(mean, 2),
+        "pre_calibration_projection": round(pre_calibration_mean, 2),
+        "calibration_projection_shift": round(mean - pre_calibration_mean, 3),
         "median": round(median, 2),
         "p10": round(p10, 2),
         "p90": round(p90, 2),
+        "pre_calibration_p10": round(pre_calibration_p10, 2),
+        "pre_calibration_p90": round(pre_calibration_p90, 2),
         "learning_scale": round(learn_scale, 3),
         "line": active_line,
         "line_source": active_source,
@@ -3150,10 +4525,14 @@ def make_projection(row, bankroll, default_odds, use_statcast, use_pitch_type, u
         "bettable": bettable,
         "no_bet_reasons": no_bet_reasons,
         "odds": price,
+        "price_is_real": bool(price_is_real),
+        "price_source": price_source,
         "pick_side": pick_side,
         "over_probability": None if over_prob is None else round(over_prob, 4),
         "under_probability": None if under_prob is None else round(under_prob, 4),
         "fair_probability": None if fair_prob is None else round(fair_prob, 4),
+        "pre_calibration_fair_probability": None if fair_prob_raw_after_market is None else round(fair_prob_raw_after_market, 4),
+        "calibration_probability_shift": None if fair_prob_raw_after_market is None or fair_prob is None else round(fair_prob - fair_prob_raw_after_market, 4),
         "edge_ks": None if active_line is None else round(mean - active_line, 2),
         "abs_edge": None if active_line is None else round(abs(mean - active_line), 2),
         "edge_pct": None if edge_pct is None else round(edge_pct, 2),
@@ -3177,11 +4556,19 @@ def make_projection(row, bankroll, default_odds, use_statcast, use_pitch_type, u
         "pitch_type_factor": round(safe_float(pitch_type_factor, 1.0), 3),
         "pitch_type_note": pitch_type_note,
         "calibration_note": calibration_note,
+        "true_projection_calibration_note": true_projection_calibration.get("note"),
+        "true_projection_calibration_active": bool(true_projection_calibration.get("active")),
+        "true_projection_calibration_shift": true_projection_calibration.get("shift"),
+        "true_probability_calibration_note": true_probability_calibration.get("note"),
+        "true_probability_calibration_active": bool(true_probability_calibration.get("active")),
+        "true_probability_calibration_shift": true_probability_calibration.get("shift"),
         "calibration_quality": calibration_profile.get("quality_score"),
         "calibration_samples": calibration_profile.get("samples"),
+        "calibration_brier": calibration_profile.get("brier"),
         "prop_rows": prop_rows,
         "lineup_rows": lineup_rows,
         "pitch_type_rows": pitch_type_rows,
+        "batter_pitch_profile_rows": batter_pitch_profile_rows,
         "source_status": {
             "sportsbook": sportsbook_data.get("status"),
             "prizepicks": pp_data.get("status"),
@@ -3243,10 +4630,15 @@ def grade_finished_games():
             continue
         if not is_game_final(p["game_pk"]):
             continue
-        actual = get_actual_pitcher_ks(p["game_pk"], p["pitcher_id"])
+        workload = get_actual_pitcher_workload(p["game_pk"], p["pitcher_id"])
+        actual = workload.get("actual") if workload else get_actual_pitcher_ks(p["game_pk"], p["pitcher_id"])
         if actual is None:
             continue
         p["actual"] = actual
+        if workload:
+            for _wk, _wv in workload.items():
+                if _wv is not None:
+                    p[_wk] = _wv
         p["graded"] = True
         p["graded_at"] = now_iso()
         line = safe_float(p.get("line"))
@@ -3259,6 +4651,7 @@ def grade_finished_games():
             p["win"] = None
             p["graded_result"] = "NO LINE"
         p["new_learning_scale"] = round(update_learning(p["pitcher_id"], p.get("projection"), actual), 3)
+        update_deep_context_learning_after_grade(p)
         if p.get("pick_id") not in result_ids:
             results.append(dict(p))
             result_ids.add(p.get("pick_id"))
@@ -3386,6 +4779,7 @@ def render_pick_card(p):
         <div>
           <div class="small-muted">Signal</div><div class="{color_class}" style="font-size:20px;font-weight:950;">{p.get('signal')}</div>
           <div class="small-muted" style="margin-top:8px;">EV</div><div style="font-size:22px;font-weight:900;">{ev_display}</div>
+          <div class="small-muted">Price Source</div><div style="font-size:12px;font-weight:800;">{p.get('price_source')}</div>
           <div class="small-muted">Bet Size</div><div style="font-size:22px;font-weight:900;">${p.get('bet_size')}</div>
         </div>
       </div>
@@ -3402,7 +4796,7 @@ def render_pick_card(p):
       <div class="small-muted" style="margin-top:12px;">Risk Notes: {p.get('risk_notes')}</div>
       <div class="small-muted">Statcast: {p.get('statcast_note')} | Pitch Type: {p.get('pitch_type_note')} | Calibration: {p.get('calibration_note')}</div>
       <div class="small-muted">Projection Source: {p.get('projection_source')} | Lineup Status: {p.get('lineup_status')} | Lineup Note: {p.get('lineup_note')}</div>
-      <div class="small-muted">Bullpen Fatigue: {p.get('bullpen_status')} | factor {p.get('bullpen_bf_factor')} | {p.get('bullpen_recent_pitches')} pitches / {p.get('bullpen_recent_ip')} IP | {p.get('bullpen_note')}</div>
+      <div class="small-muted">Repeat Matchup: {p.get("repeat_matchup_note", "Neutral")}\nBullpen Fatigue: {p.get('bullpen_status')} | factor {p.get('bullpen_bf_factor')} | {p.get('bullpen_recent_pitches')} pitches / {p.get('bullpen_recent_ip')} IP | {p.get('bullpen_note')}</div>
       <div class="small-muted">Weather: {p.get('weather_note')} | Umpire: {p.get('umpire_note')}</div>
       <div class="small-muted">Advanced Sim: {p.get('bayesian_markov_note')} | XGBoost: {p.get('xgboost_note')}</div>
     </div>
@@ -3413,7 +4807,7 @@ def render_pick_card(p):
 # =========================
 st.markdown("""
 <div class="hero-panel">
-  <div class="big-title">🔥 MLB STRIKEOUT PROP ENGINE v10.8 WEATHER + UMPIRE CAPS</div>
+  <div class="big-title">🔥 MLB STRIKEOUT PROP ENGINE v11.10 POWER LEARNING</div>
   <div class="sub-title">Strict Win Filter + MLB-only Underdog line lock → Refresh → Save → Grade</div>
 </div>
 """, unsafe_allow_html=True)
@@ -3562,7 +4956,7 @@ with tab2:
         show = pd.DataFrame([{k: v for k, v in p.items() if k not in ["prop_rows", "lineup_rows", "pitch_type_rows"]} for p in board])
         cols = [
             "date", "pitcher", "matchup", "hand", "projection", "line", "pick_side",
-            "fair_probability", "edge_ks", "ev", "signal", "risk_label",
+            "fair_probability", "edge_ks", "ev", "price_source", "price_is_real", "signal", "risk_label",
             "line_source", "projection_source", "lineup_status", "bullpen_status", "bullpen_bf_factor", "bullpen_recent_pitches", "bullpen_recent_ip", "bullpen_back_to_back_relievers", "underdog_line", "underdog_status", "underdog_message", "data_score", "lineup_locked", "pitcher_confirmed",
             "statcast_available", "pitch_type_matchup_available", "pitch_type_factor", "bayesian_markov_enabled", "xgboost_active", "xgboost_samples", "xgboost_adjustment", "bettable", "leash_risk"
         ]
@@ -3595,6 +4989,7 @@ with tab4:
     if board:
         stat_rows = []
         pitch_rows = []
+        batter_pitch_rows = []
         lineup_rows = []
         for p in board:
             stat_rows.append({
@@ -3608,6 +5003,9 @@ with tab4:
                 "Pitch-Type Note": p.get("pitch_type_note"),
                 "Weather Factor": p.get("weather_factor"),
                 "Weather Note": p.get("weather_note"),
+                "Density Altitude Factor": p.get("density_altitude_factor"),
+                "Manager Hook": p.get("manager_hook_status"),
+                "Manager Hook Note": p.get("manager_hook_note"),
                 "Umpire": p.get("umpire"),
                 "Umpire Factor": p.get("ump_factor"),
                 "Umpire Note": p.get("umpire_note"),
@@ -3617,6 +5015,11 @@ with tab4:
                 rr = dict(r)
                 rr["Pitcher"] = p.get("pitcher")
                 pitch_rows.append(rr)
+            for r in p.get("batter_pitch_profile_rows", []):
+                rr = dict(r)
+                rr["Pitcher"] = p.get("pitcher")
+                rr["Matchup"] = p.get("matchup")
+                batter_pitch_rows.append(rr)
             for r in p.get("lineup_rows", []):
                 rr = dict(r)
                 rr["Pitcher"] = p.get("pitcher")
@@ -3629,6 +5032,11 @@ with tab4:
             st.dataframe(pd.DataFrame(pitch_rows), use_container_width=True, hide_index=True)
         else:
             st.info("No pitch-type rows loaded yet.")
+        st.subheader("Per-Batter Pitch-Type Profile")
+        if batter_pitch_rows:
+            st.dataframe(pd.DataFrame(batter_pitch_rows), use_container_width=True, hide_index=True)
+        else:
+            st.info("No per-batter pitch-type rows loaded yet.")
         st.subheader("Lineup Batter K Inputs")
         if lineup_rows:
             st.dataframe(pd.DataFrame(lineup_rows), use_container_width=True, hide_index=True)
