@@ -4924,8 +4924,193 @@ def display_clean_real_prop_rows(rows, **kwargs):
     else:
         st.info("No rejected/NBA debug rows shown. Only valid MLB pitcher strikeout lines will appear here.")
 
-tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
+
+# =========================
+# v11.11 BEST 4 BUILDER / HIT-RATE RANKER
+# =========================
+def _best4_num(x, default=0.0):
+    v = safe_float(x, default)
+    return default if v is None else v
+
+def best4_pick_direction(p):
+    side = str(p.get("pick_side") or "").upper().strip()
+    if side in ["OVER", "UNDER"]:
+        return side
+    proj = safe_float(p.get("projection"))
+    line = safe_float(p.get("line"))
+    if proj is None or line is None:
+        return "PASS"
+    return "OVER" if proj > line else "UNDER"
+
+def best4_abs_edge(p):
+    # Prefer the app's own edge fields, but fall back to projection - line.
+    for key in ["abs_edge", "edge_ks", "edge", "projection_gap"]:
+        v = safe_float(p.get(key))
+        if v is not None:
+            return abs(v)
+    proj = safe_float(p.get("projection"))
+    line = safe_float(p.get("line"))
+    if proj is None or line is None:
+        return 0.0
+    return abs(proj - line)
+
+def best4_is_risky_text(*vals):
+    t = " ".join(str(v or "") for v in vals).upper()
+    bad = ["EXTREME", "HIGH RISK", "VOLATILE", "NO BET", "BAD", "MISSING", "LOW SAMPLE"]
+    return any(x in t for x in bad)
+
+def best4_rejection_reasons(p):
+    reasons = []
+    prob = _best4_num(p.get("fair_probability"), 0.0)
+    edge = best4_abs_edge(p)
+    data_score = _best4_num(p.get("data_score"), 0.0)
+    ev = _best4_num(p.get("ev"), 0.0)
+    line = safe_float(p.get("line"))
+    proj = safe_float(p.get("projection"))
+
+    if line is None:
+        reasons.append("No real line")
+    if proj is None:
+        reasons.append("No projection")
+    if prob < MIN_BETTABLE_PROB:
+        reasons.append(f"Prob below {MIN_BETTABLE_PROB:.0%}")
+    if edge < MIN_BETTABLE_GAP_KS:
+        reasons.append(f"Gap under {MIN_BETTABLE_GAP_KS:.1f} Ks")
+    if data_score < MIN_BETTABLE_SCORE:
+        reasons.append(f"Data score below {MIN_BETTABLE_SCORE}")
+    if ev < MIN_BETTABLE_EV:
+        reasons.append(f"EV below {MIN_BETTABLE_EV:.0%}")
+    if not p.get("lineup_locked"):
+        reasons.append("Lineup not confirmed")
+    if not p.get("price_is_real"):
+        reasons.append("Price/EV estimated")
+
+    risk_text = " ".join(str(p.get(k, "")) for k in [
+        "risk_label", "leash_risk", "manager_hook_status", "manager_hook", "bullpen_status",
+        "weather_note", "umpire_note", "calibration_note", "signal"
+    ])
+    if best4_is_risky_text(risk_text):
+        reasons.append("Risk flag present")
+    return reasons
+
+def best4_hit_rate_score(p):
+    """Display-only hit-rate score. Does not change projections/signals."""
+    prob = _best4_num(p.get("fair_probability"), 0.50)
+    edge = best4_abs_edge(p)
+    data_score = _best4_num(p.get("data_score"), 70.0)
+    ev = _best4_num(p.get("ev"), 0.0)
+    p10 = safe_float(p.get("p10"))
+    p90 = safe_float(p.get("p90"))
+    sim_range = (p90 - p10) if p10 is not None and p90 is not None else 3.5
+
+    score = 0.0
+    score += prob * 48.0
+    score += min(edge, 3.25) * 9.0
+    score += data_score * 0.20
+    score += max(ev, 0.0) * 75.0
+
+    # Stability bonuses/penalties are small and capped.
+    if p.get("lineup_locked"):
+        score += 4.0
+    else:
+        score -= 5.0
+    if p.get("price_is_real"):
+        score += 3.0
+    else:
+        score -= 3.0
+    if str(p.get("signal_type", "")).lower() == "good":
+        score += 3.0
+    if str(p.get("bettable", "")).lower() in ["true", "yes", "1"] or p.get("bettable") is True:
+        score += 2.0
+    if sim_range > 4.5:
+        score -= min((sim_range - 4.5) * 2.5, 8.0)
+
+    # Do not allow dangerous flags to rank at the top.
+    score -= len(best4_rejection_reasons(p)) * 4.0
+    return round(float(clamp(score, 0, 100)), 2)
+
+def build_best4_table(board):
+    rows = []
+    for p in board or []:
+        line = safe_float(p.get("line"))
+        proj = safe_float(p.get("projection"))
+        if line is None or proj is None:
+            continue
+        direction = best4_pick_direction(p)
+        edge_signed = proj - line
+        reasons = best4_rejection_reasons(p)
+        top_score = best4_hit_rate_score(p)
+        qualified = (
+            not reasons
+            and top_score >= 88
+            and _best4_num(p.get("fair_probability"), 0) >= MIN_BETTABLE_PROB
+            and best4_abs_edge(p) >= MIN_BETTABLE_GAP_KS
+        )
+        rows.append({
+            "Player": p.get("pitcher") or p.get("player") or "",
+            "Matchup": p.get("matchup", ""),
+            "Pick": direction,
+            "Line": line,
+            "Projection": round(proj, 2),
+            "Edge": round(edge_signed, 2),
+            "Abs Edge": round(abs(edge_signed), 2),
+            "Fair Prob %": round(_best4_num(p.get("fair_probability"), 0) * 100, 1),
+            "EV %": round(_best4_num(p.get("ev"), 0) * 100, 1),
+            "Data Score": round(_best4_num(p.get("data_score"), 0), 1),
+            "Hit-Rate Score": top_score,
+            "Lineup": "Confirmed" if p.get("lineup_locked") else "Fallback",
+            "Price": "Real" if p.get("price_is_real") else "Estimated",
+            "Risk": p.get("risk_label", ""),
+            "Hook": p.get("manager_hook_status") or p.get("manager_hook") or "",
+            "Weather": p.get("weather_note", ""),
+            "Calibration": p.get("calibration_note", p.get("true_calibration_note", "")),
+            "Status": "TOP QUALIFIED" if qualified else "PASS",
+            "Why": "Qualified" if qualified else "; ".join(reasons),
+        })
+    df = pd.DataFrame(rows)
+    if df.empty:
+        return df, df, df
+    df = df.sort_values(["Status", "Hit-Rate Score", "Fair Prob %", "Abs Edge"], ascending=[True, False, False, False])
+    qualified = df[df["Status"] == "TOP QUALIFIED"].sort_values("Hit-Rate Score", ascending=False)
+    safe_top4 = qualified.head(4)
+    aggressive = df[
+        (df["Fair Prob %"] >= 60)
+        & (df["Abs Edge"] >= 0.75)
+        & (df["Data Score"] >= 82)
+    ].sort_values("Hit-Rate Score", ascending=False).head(4)
+    return safe_top4, aggressive, df
+
+def render_best4_builder(board):
+    st.markdown('<div class="section-title-pro">Best 4 Builder / Top Hit-Rate Picks</div>', unsafe_allow_html=True)
+    st.caption("Display-only ranker. It does not change projections, EV, calibration, or saved official snapshots.")
+    top4_safe, aggressive_top4, ranked_all = build_best4_table(board)
+
+    c1, c2, c3 = st.columns(3)
+    c1.metric("Ultra-Safe Qualified", len(top4_safe))
+    c2.metric("Aggressive Candidates", len(aggressive_top4))
+    c3.metric("Ranked Board", len(ranked_all))
+
+    st.subheader("🔥 Top 4 Safest")
+    if top4_safe.empty:
+        st.warning("No ultra-safe Top 4 right now. That is a good sign: the app is not forcing weak plays.")
+    else:
+        st.dataframe(top4_safe, use_container_width=True, hide_index=True)
+
+    st.subheader("⚡ Aggressive Top 4")
+    if aggressive_top4.empty:
+        st.info("No aggressive candidates right now.")
+    else:
+        st.dataframe(aggressive_top4, use_container_width=True, hide_index=True)
+
+    st.subheader("✅ All Ranked / 🚫 Pass Reasons")
+    if ranked_all.empty:
+        st.info("No lined picks available to rank.")
+    else:
+        st.dataframe(ranked_all, use_container_width=True, hide_index=True)
+
+tab1, tab_best4, tab2, tab3, tab4, tab5, tab6 = st.tabs([
     "TOP PLAYS",
+    "BEST 4 BUILDER",
     "ALL PLAYERS",
     "REAL PROP BOARD",
     "STATCAST",
@@ -4949,6 +5134,9 @@ with tab1:
         )
         for p in top:
             render_pick_card(p)
+
+with tab_best4:
+    render_best4_builder(board)
 
 with tab2:
     st.markdown('<div class="section-title-pro">All Players</div>', unsafe_allow_html=True)
