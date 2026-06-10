@@ -9793,6 +9793,221 @@ def ml_team_score_from_pitcher(p):
         score -= 2
     return float(clamp(score, 25, 78))
 
+
+# =========================
+# MONEYLINE TEAM-WIN LOGIC 2.0
+# Separate from all prop engines. These factors only feed the Moneyline tab.
+# =========================
+MLB_AVG_RUNS_PER_GAME = 4.45
+MLB_AVG_OBP = 0.315
+MLB_AVG_OPS = 0.715
+
+ML_PARK_RUN_FACTORS = {
+    "Coors Field": 1.12,
+    "Great American Ball Park": 1.06,
+    "Fenway Park": 1.05,
+    "Citizens Bank Park": 1.04,
+    "Yankee Stadium": 1.03,
+    "Globe Life Field": 1.02,
+    "Chase Field": 1.02,
+    "Wrigley Field": 1.01,
+    "Dodger Stadium": 0.99,
+    "Oracle Park": 0.96,
+    "T-Mobile Park": 0.96,
+    "Petco Park": 0.95,
+    "Comerica Park": 0.97,
+    "PNC Park": 0.98,
+    "loanDepot park": 0.97,
+    "Oakland Coliseum": 0.94,
+}
+
+def _ml_stat_number(stat, *keys, default=None):
+    for k in keys:
+        v = safe_float((stat or {}).get(k), None)
+        if v is not None:
+            return v
+    return default
+
+@st.cache_data(ttl=21600, show_spinner=False)
+def ml_team_hitting_profile(team_id):
+    """Team offense profile for Moneyline + light Hits/RBI run-environment support."""
+    empty = {
+        "available": False,
+        "team_id": team_id,
+        "games": None,
+        "runs_pg": MLB_AVG_RUNS_PER_GAME,
+        "baseruns_pg": MLB_AVG_RUNS_PER_GAME,
+        "obp": MLB_AVG_OBP,
+        "ops": MLB_AVG_OPS,
+        "lineup_strength_score": 50,
+        "message": "Team hitting profile unavailable; neutral run environment",
+    }
+    if not team_id:
+        return empty
+    try:
+        data = safe_get_json(f"{MLB_BASE}/teams/{int(team_id)}/stats", params={"stats":"season", "group":"hitting"}, timeout=12) or {}
+        split = get_first_stat_split(data)
+        stat = (split or {}).get("stat", {})
+        g = _ml_stat_number(stat, "gamesPlayed", "games", default=0) or 0
+        runs = _ml_stat_number(stat, "runs", default=0) or 0
+        h = _ml_stat_number(stat, "hits", default=0) or 0
+        doubles = _ml_stat_number(stat, "doubles", default=0) or 0
+        triples = _ml_stat_number(stat, "triples", default=0) or 0
+        hr = _ml_stat_number(stat, "homeRuns", default=0) or 0
+        bb = _ml_stat_number(stat, "baseOnBalls", default=0) or 0
+        hbp = _ml_stat_number(stat, "hitByPitch", default=0) or 0
+        ab = _ml_stat_number(stat, "atBats", default=0) or 0
+        sf = _ml_stat_number(stat, "sacFlies", default=0) or 0
+        sb = _ml_stat_number(stat, "stolenBases", default=0) or 0
+        cs = _ml_stat_number(stat, "caughtStealing", default=0) or 0
+        tb = _ml_stat_number(stat, "totalBases", default=None)
+        if tb is None:
+            singles = max(0, h - doubles - triples - hr)
+            tb = singles + 2*doubles + 3*triples + 4*hr
+        denom_obp = ab + bb + hbp + sf
+        obp = (h + bb + hbp) / denom_obp if denom_obp > 0 else MLB_AVG_OBP
+        slg = tb / ab if ab > 0 else None
+        ops = obp + slg if slg is not None else MLB_AVG_OPS
+        runs_pg = runs / g if g > 0 else MLB_AVG_RUNS_PER_GAME
+        # BaseRuns-style estimate using only common MLB team fields. This is intentionally capped.
+        A = max(0.0, h + bb + hbp - hr)
+        B = max(0.0, (1.4 * tb) - (0.6 * h) - (3.0 * hr) + (0.1 * (bb + hbp)) + (0.9 * (sb - cs)))
+        C = max(1.0, ab - h)
+        D = max(0.0, hr)
+        baseruns = (A * B / max(B + C, 1e-9)) + D
+        baseruns_pg = baseruns / g if g > 0 else MLB_AVG_RUNS_PER_GAME
+        lineup_strength = 50
+        lineup_strength += clamp((obp - MLB_AVG_OBP) * 260, -12, 14)
+        lineup_strength += clamp((ops - MLB_AVG_OPS) * 55, -10, 12)
+        lineup_strength += clamp((baseruns_pg - MLB_AVG_RUNS_PER_GAME) * 6.5, -10, 12)
+        return {
+            "available": True,
+            "team_id": team_id,
+            "games": g,
+            "runs_pg": round(runs_pg, 3),
+            "baseruns_pg": round(baseruns_pg, 3),
+            "obp": round(obp, 3),
+            "ops": round(ops, 3),
+            "lineup_strength_score": int(round(clamp(lineup_strength, 20, 80))),
+            "message": f"BaseRuns {baseruns_pg:.2f}/G, OBP {obp:.3f}, OPS {ops:.3f}",
+        }
+    except Exception as e:
+        out = dict(empty)
+        out["message"] = f"Team hitting profile unavailable: {e}"
+        return out
+
+@st.cache_data(ttl=21600, show_spinner=False)
+def ml_team_pitching_allowed_profile(team_id):
+    """Run-prevention profile used only by the Moneyline tab."""
+    empty = {"available": False, "runs_allowed_pg": MLB_AVG_RUNS_PER_GAME, "message": "Pitching allowed profile unavailable"}
+    if not team_id:
+        return empty
+    try:
+        data = safe_get_json(f"{MLB_BASE}/teams/{int(team_id)}/stats", params={"stats":"season", "group":"pitching"}, timeout=12) or {}
+        split = get_first_stat_split(data)
+        stat = (split or {}).get("stat", {})
+        g = _ml_stat_number(stat, "gamesPlayed", "games", default=0) or 0
+        ra = _ml_stat_number(stat, "runs", default=None)
+        if ra is None:
+            ra = _ml_stat_number(stat, "earnedRuns", default=0) or 0
+        ra_pg = float(ra) / g if g > 0 else MLB_AVG_RUNS_PER_GAME
+        return {"available": True, "runs_allowed_pg": round(ra_pg, 3), "message": f"Runs allowed {ra_pg:.2f}/G"}
+    except Exception as e:
+        out = dict(empty)
+        out["message"] = f"Pitching allowed profile unavailable: {e}"
+        return out
+
+def ml_pythagorean_win_pct(rs_pg, ra_pg, exponent=1.83):
+    rs = max(0.1, safe_float(rs_pg, MLB_AVG_RUNS_PER_GAME) or MLB_AVG_RUNS_PER_GAME)
+    ra = max(0.1, safe_float(ra_pg, MLB_AVG_RUNS_PER_GAME) or MLB_AVG_RUNS_PER_GAME)
+    return (rs ** exponent) / ((rs ** exponent) + (ra ** exponent))
+
+def ml_park_factor_from_pitcher_rows(ap, hp):
+    venue = str((ap or {}).get("venue") or (hp or {}).get("venue") or "")
+    factor = ML_PARK_RUN_FACTORS.get(venue, 1.00)
+    label = "NEUTRAL"
+    if factor >= 1.04:
+        label = "HITTER_FRIENDLY"
+    elif factor <= 0.97:
+        label = "PITCHER_FRIENDLY"
+    return factor, label, venue or "Unknown venue"
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def ml_team_rest_edge(team_id, game_date):
+    """Simple travel/rest proxy: off day = plus, previous-day game/doubleheader = small tax."""
+    if not team_id or not game_date:
+        return 0.0, "REST_UNKNOWN"
+    try:
+        d = datetime.strptime(str(game_date)[:10], "%Y-%m-%d")
+        prev = (d - timedelta(days=1)).strftime("%Y-%m-%d")
+        sched = safe_get_json(f"{MLB_BASE}/schedule", params={"sportId":1, "teamId":int(team_id), "date":prev}, timeout=10) or {}
+        games = []
+        for dd in sched.get("dates", []):
+            games.extend(dd.get("games", []) or [])
+        if len(games) <= 0:
+            return 1.5, "REST_ADVANTAGE"
+        if len(games) >= 2:
+            return -2.0, "DOUBLEHEADER_TAX"
+        return -0.3, "PLAYED_YESTERDAY"
+    except Exception:
+        return 0.0, "REST_UNKNOWN"
+
+def ml_moneyline_factors(team_abbr, team_pitcher_row, opp_pitcher_row):
+    """Returns team model score + transparent factor details for the ML tab only."""
+    team_id = (team_pitcher_row or {}).get("team_id")
+    opp_id = (team_pitcher_row or {}).get("opp_team_id")
+    game_date = (team_pitcher_row or {}).get("date")
+    hit = ml_team_hitting_profile(team_id)
+    allow = ml_team_pitching_allowed_profile(team_id)
+    opp_hit = ml_team_hitting_profile(opp_id)
+    sp_score = ml_team_score_from_pitcher(team_pitcher_row)
+    opp_sp_score = ml_team_score_from_pitcher(opp_pitcher_row)
+    pyth = ml_pythagorean_win_pct(hit.get("runs_pg"), allow.get("runs_allowed_pg"))
+    bp_usage = get_recent_team_bullpen_usage(team_id, game_date, lookback_days=3) if team_id else {"available": False, "label":"UNKNOWN", "message":"Bullpen unavailable"}
+    bp_label = bp_usage.get("label", "UNKNOWN")
+    bp_adj = 0.0
+    if bp_label == "FRESH":
+        bp_adj = 2.0
+    elif bp_label == "TIRED":
+        bp_adj = -2.5
+    rest_adj, rest_label = ml_team_rest_edge(team_id, game_date)
+    park_factor, park_label, venue = ml_park_factor_from_pitcher_rows(team_pitcher_row, opp_pitcher_row)
+    # Hitter-friendly parks help the better offense slightly, pitcher parks help the better SP side slightly.
+    offense_delta = (hit.get("lineup_strength_score", 50) - opp_hit.get("lineup_strength_score", 50)) / 50.0
+    park_adj = clamp((park_factor - 1.0) * 18.0 * offense_delta, -2.0, 2.0)
+    # Blend team true strength + starting pitcher + bullpen/rest/park. Kept capped to avoid ML overpowering props.
+    score = 50.0
+    score += clamp((pyth - 0.500) * 70, -10, 10)
+    score += clamp((hit.get("baseruns_pg", MLB_AVG_RUNS_PER_GAME) - MLB_AVG_RUNS_PER_GAME) * 4.2, -8, 8)
+    score += clamp((hit.get("lineup_strength_score", 50) - 50) * 0.22, -7, 7)
+    score += clamp((sp_score - opp_sp_score) * 0.18, -7, 7)
+    score += bp_adj + rest_adj + park_adj
+    return float(clamp(score, 25, 78)), {
+        "BaseRuns/G": round(hit.get("baseruns_pg", MLB_AVG_RUNS_PER_GAME), 2),
+        "Pyth Win%": round(pyth * 100, 1),
+        "Lineup Strength": hit.get("lineup_strength_score"),
+        "Bullpen": bp_label,
+        "Bullpen Adj": round(bp_adj, 1),
+        "Rest": rest_label,
+        "Rest Adj": round(rest_adj, 1),
+        "Park": park_label,
+        "Park Factor": round(park_factor, 3),
+        "Park Adj": round(park_adj, 1),
+        "Venue": venue,
+    }
+
+def ml_factor_summary(factors):
+    if not isinstance(factors, dict):
+        return "—"
+    return (
+        f"BsR {factors.get('BaseRuns/G','—')}/G • "
+        f"Pyth {factors.get('Pyth Win%','—')}% • "
+        f"LU {factors.get('Lineup Strength','—')} • "
+        f"BP {factors.get('Bullpen','—')} • "
+        f"Rest {factors.get('Rest','—')} • "
+        f"Park {factors.get('Park','—')}"
+    )
+
 def ml_build_board(board):
     odds = ml_fetch_oddsapi_h2h()
     games = {}
@@ -9811,7 +10026,8 @@ def ml_build_board(board):
         ps = g["pitchers"]
         ap = next((p for p in ps if str(p.get("team") or "").upper()==a.upper()), None) or (ps[0] if ps else {})
         hp = next((p for p in ps if str(p.get("team") or "").upper()==h.upper()), None) or (ps[1] if len(ps)>1 else {})
-        ascore, hscore = ml_team_score_from_pitcher(ap), ml_team_score_from_pitcher(hp)
+        ascore, afactors = ml_moneyline_factors(a, ap, hp)
+        hscore, hfactors = ml_moneyline_factors(h, hp, ap)
         total = max(ascore+hscore, 1e-9)
         amodel = clamp(ascore/total*100, 25, 75)
         hmodel = 100-amodel
@@ -9840,7 +10056,21 @@ def ml_build_board(board):
             "Away Price": og.get("away_price") if og else None, "Home Price": og.get("home_price") if og else None,
             "Away SP": ap.get("pitcher","—") if isinstance(ap,dict) else "—",
             "Home SP": hp.get("pitcher","—") if isinstance(hp,dict) else "—",
-            "Source": "OddsAPI + K board" if og else "K board model only"
+            "Away BaseRuns/G": afactors.get("BaseRuns/G"),
+            "Home BaseRuns/G": hfactors.get("BaseRuns/G"),
+            "Away Pyth Win%": afactors.get("Pyth Win%"),
+            "Home Pyth Win%": hfactors.get("Pyth Win%"),
+            "Away Lineup Strength": afactors.get("Lineup Strength"),
+            "Home Lineup Strength": hfactors.get("Lineup Strength"),
+            "Away Bullpen": afactors.get("Bullpen"),
+            "Home Bullpen": hfactors.get("Bullpen"),
+            "Away Rest": afactors.get("Rest"),
+            "Home Rest": hfactors.get("Rest"),
+            "Park": afactors.get("Park"),
+            "Park Factor": afactors.get("Park Factor"),
+            "Away ML Factors": ml_factor_summary(afactors),
+            "Home ML Factors": ml_factor_summary(hfactors),
+            "Source": "OddsAPI + ML 2.0" if og else "ML 2.0 model only"
         })
     df = pd.DataFrame(rows)
     if not df.empty:
