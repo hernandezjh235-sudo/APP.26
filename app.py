@@ -20571,6 +20571,616 @@ def render_projection_inflation_suppression_panel():
     except Exception as e:
         st.info(f"Inflation Suppression waiting: {e}")
 
+
+# =========================
+# TEST 3 REALITY PROJECTION TUNER
+# Version: TEST3_REALITY_PROJECTION_TUNER_2026_06_13
+#
+# Adds:
+# 1) Projection Reality Check
+# 2) Dynamic Under Floor
+# 3) Conservative Moneyline Confidence Gate helper
+# =========================
+TEST3_REALITY_PROJECTION_TUNER_VERSION = "TEST3_REALITY_PROJECTION_TUNER_2026_06_13"
+
+def _t3_num(x, default=None):
+    try:
+        if x in (None, "", "—", "WAITING_FOR_UD_LINE"):
+            return default
+        v = float(x)
+        if pd.isna(v):
+            return default
+        return v
+    except Exception:
+        return default
+
+def _t3_cap(x, lo, hi):
+    try:
+        return max(lo, min(hi, float(x)))
+    except Exception:
+        return 0.0
+
+def _t3_anchor(row):
+    vals, weights = [], []
+    for col, w in [
+        ("Season Avg K", 0.36),
+        ("Season Median K", 0.24),
+        ("Season Recent3 K", 0.24),
+        ("Opp Hist Avg K", 0.16),
+    ]:
+        v = _t3_num(row.get(col), None)
+        if v is None:
+            continue
+        if col == "Opp Hist Avg K" and _t3_num(row.get("Opp Hist Starts"), 0) < 1:
+            continue
+        vals.append(v * w)
+        weights.append(w)
+    if not weights:
+        return None
+    return sum(vals) / sum(weights)
+
+def _t3_support(row):
+    support, notes = 0, []
+    checks = [
+        ("Season Avg K", 6.2, "SEASON_K_SUPPORT"),
+        ("Season Recent3 K", 6.0, "RECENT_K_SUPPORT"),
+        ("Opp Hist Avg K", 5.8, "OPP_HISTORY_SUPPORT"),
+        ("Pitcher K%", 25, "PITCHER_K_SKILL"),
+        ("Opp K%", 23, "OPP_K_MATCHUP"),
+        ("Putaway/Whiff", 24, "WHIFF_SUPPORT"),
+    ]
+    for col, thresh, note in checks:
+        v = _t3_num(row.get(col), None)
+        if v is not None and v >= thresh:
+            if col == "Opp Hist Avg K" and _t3_num(row.get("Opp Hist Starts"), 0) < 1:
+                continue
+            support += 1
+            notes.append(note)
+    exp_bf = _t3_num(row.get("Exp BF"), None)
+    season_bf = _t3_num(row.get("Season Avg BF"), None)
+    if exp_bf is not None and season_bf is not None and exp_bf <= season_bf + 2.0:
+        support += 1
+        notes.append("BF_REASONABLE")
+    return support, "|".join(notes)
+
+def _t3_adjust(row):
+    proj = _t3_num(row.get("Suppressed Final K Projection"), None)
+    if proj is None:
+        proj = _t3_num(row.get("Final K Projection"), None)
+    if proj is None:
+        proj = _t3_num(row.get("K PROJ"), None)
+    if proj is None:
+        return 0.0, "NO_PROJ", ""
+
+    starts = _t3_num(row.get("Season Starts"), 0)
+    if starts < 3:
+        return 0.0, "LOW_SAMPLE", ""
+
+    anchor = _t3_anchor(row)
+    if anchor is None:
+        return 0.0, "NO_ANCHOR", ""
+
+    support, support_notes = _t3_support(row)
+    adj = 0.0
+    labels = []
+    reasons = [f"proj {proj:.2f} anchor {anchor:.2f}", f"support {support}:{support_notes}"]
+
+    high_gap = proj - anchor
+    if high_gap >= 0.85:
+        if support >= 4:
+            rate, cap, label = 0.10, 0.28, "REALITY_TRIM_LIGHT_SUPPORTED"
+        elif support >= 2:
+            rate, cap, label = 0.16, 0.45, "REALITY_TRIM_MODERATE"
+        else:
+            rate, cap, label = 0.23, 0.70, "REALITY_TRIM_STRONG_UNSUPPORTED"
+        trim = -_t3_cap((high_gap - 0.55) * rate, 0.0, cap)
+        season_bf = _t3_num(row.get("Season Avg BF"), None)
+        exp_bf = _t3_num(row.get("Exp BF"), season_bf)
+        if season_bf is not None and exp_bf is not None and exp_bf > season_bf + 3.0:
+            trim -= 0.08
+            reasons.append("BF_ABOVE_SEASON")
+        adj += trim
+        labels.append(label)
+        reasons.append(f"HIGH_GAP_{high_gap:.2f}")
+
+    low_gap = anchor - proj
+    if low_gap >= 1.10:
+        season_avg = _t3_num(row.get("Season Avg K"), anchor)
+        pitcher_k = _t3_num(row.get("Pitcher K%"), None)
+        skill_ok = (season_avg >= 4.2) or (pitcher_k is not None and pitcher_k >= 20)
+        if skill_ok:
+            if support >= 3:
+                rate, cap, label = 0.22, 0.55, "UNDER_FLOOR_STRONG"
+            else:
+                rate, cap, label = 0.16, 0.38, "UNDER_FLOOR_MODERATE"
+            lift = _t3_cap((low_gap - 0.75) * rate, 0.0, cap)
+            adj += lift
+            labels.append(label)
+            reasons.append(f"LOW_GAP_{low_gap:.2f}")
+
+    line = _t3_num(row.get("UD/Line"), None)
+    if line is not None:
+        old_edge = proj - line
+        new_edge = proj + adj - line
+        if old_edge > 0 and new_edge < -0.20:
+            adj += abs(new_edge) * 0.50
+            reasons.append("SOFTEN_OVER_UNDER_FLIP")
+        if old_edge < 0 and new_edge > 0.20:
+            adj -= abs(new_edge) * 0.50
+            reasons.append("SOFTEN_UNDER_OVER_FLIP")
+
+    adj = round(_t3_cap(adj, -0.80, 0.65), 2)
+    label = "|".join(labels) if labels else "REALITY_NO_CHANGE"
+    return adj, label, "; ".join(reasons)
+
+def _t3_decision(row, proj):
+    line = _t3_num(row.get("UD/Line"), None)
+    if proj is None:
+        return "NO_PROJECTION", ""
+    if line is None:
+        return "NO_UD_LINE", ""
+    edge = round(proj - line, 2)
+    if edge >= 1.30:
+        return "🔥 OVER", edge
+    if edge >= 0.70:
+        return "⚠️ OVER LEAN", edge
+    if edge <= -1.30:
+        return "🔥 UNDER", edge
+    if edge <= -0.70:
+        return "⚠️ UNDER LEAN", edge
+    return "🚫 PASS — REALITY THIN EDGE", edge
+
+def _t3_apply(df):
+    if df is None or df.empty:
+        return df
+    d = df.copy()
+    adjs, labels, reasons, projs, decisions, edges = [], [], [], [], [], []
+    for _, rr in d.iterrows():
+        row = rr.to_dict()
+        base = _t3_num(row.get("Suppressed Final K Projection"), None)
+        if base is None:
+            base = _t3_num(row.get("Final K Projection"), None)
+        if base is None:
+            base = _t3_num(row.get("K PROJ"), None)
+        adj, label, reason = _t3_adjust(row)
+        rp = round(base + adj, 2) if base is not None else None
+        dec, edge = _t3_decision(row, rp)
+        adjs.append(adj)
+        labels.append(label)
+        reasons.append(reason)
+        projs.append(rp if rp is not None else "")
+        decisions.append(dec)
+        edges.append(edge)
+
+    d["Reality Check Adjustment"] = adjs
+    d["Reality Check Label"] = labels
+    d["Reality Check Reason"] = reasons
+    d["Reality K Projection"] = projs
+    d["Reality K Edge"] = edges
+    d["Reality K Decision"] = decisions
+    d["Reality Tuner Version"] = TEST3_REALITY_PROJECTION_TUNER_VERSION
+
+    try:
+        if bool(st.session_state.get("use_test3_reality_projection", True)):
+            if "K PROJ" in d.columns:
+                d["Pre-Test3 K PROJ"] = d["K PROJ"]
+                d["K PROJ"] = d["Reality K Projection"]
+            if "Decision" in d.columns:
+                d["Pre-Test3 Decision"] = d["Decision"]
+                d["Decision"] = d["Reality K Decision"]
+            if "Edge Gap" in d.columns:
+                d["Pre-Test3 Edge Gap"] = d["Edge Gap"]
+                d["Edge Gap"] = d["Reality K Edge"]
+            if "Main Engine Action" in d.columns:
+                d["Pre-Test3 Main Engine Action"] = d["Main Engine Action"]
+                d["Main Engine Action"] = d["Reality K Decision"]
+    except Exception:
+        pass
+    return d
+
+if "build_kproj_table" in globals():
+    _prev_t3_build_kproj_table = build_kproj_table
+    def build_kproj_table(board):
+        df = _prev_t3_build_kproj_table(board)
+        try:
+            return _t3_apply(df)
+        except Exception:
+            return df
+
+def render_test3_reality_projection_panel():
+    st.markdown("### 🎛️ Test 3 Reality Projection Tuner")
+    st.caption("Projection Reality Check + Dynamic Under Floor. Keeps matchup-supported upside, trims unsupported inflation, and lifts extreme low under projections.")
+    try:
+        st.session_state["use_test3_reality_projection"] = st.toggle(
+            "Use Test 3 Reality Projection",
+            value=st.session_state.get("use_test3_reality_projection", True),
+            help="ON = official K PROJ/Decision use Test 3 Reality Projection.",
+            key="use_test3_reality_projection_unique"
+        )
+    except Exception:
+        pass
+    try:
+        df = build_kproj_table(board) if "board" in globals() else pd.DataFrame()
+        cols = [c for c in [
+            "Pitcher", "Matchup", "Pre-Test3 K PROJ", "K PROJ", "Reality K Projection",
+            "UD/Line", "Reality K Edge", "Reality K Decision",
+            "Reality Check Adjustment", "Reality Check Label",
+            "Season Avg K", "Season Median K", "Season Recent3 K",
+            "Opp Hist Avg K", "Opp Hist Starts", "Exp BF", "Season Avg BF",
+            "Pitcher K%", "Opp K%", "Putaway/Whiff", "Reality Check Reason"
+        ] if c in df.columns]
+        if cols:
+            st.dataframe(df[cols], use_container_width=True, hide_index=True)
+        else:
+            st.info("Test 3 panel will populate after K board builds.")
+    except Exception as e:
+        st.info(f"Test 3 waiting: {e}")
+
+# Moneyline helper: available for future renderer integration, intentionally non-invasive.
+def apply_moneyline_confidence_gate_df(df):
+    if df is None or not isinstance(df, pd.DataFrame) or df.empty:
+        return df
+    d = df.copy()
+    scores, labels = [], []
+    for _, rr in d.iterrows():
+        row = {str(k).lower(): v for k, v in rr.to_dict().items()}
+        score = 50
+        for k, v in row.items():
+            if "run diff" in k or "run differential" in k:
+                rd = abs(_t3_num(v, 0) or 0)
+                score += 18 if rd >= 1.0 else 10 if rd >= 0.55 else -8 if rd < 0.25 else 0
+                break
+        for k, v in row.items():
+            if "edge" in k and "%" in k:
+                e = abs(_t3_num(v, 0) or 0)
+                score += 14 if e >= 8 else 7 if e >= 4 else -8 if e < 2 else 0
+                break
+        score = max(0, min(100, score))
+        label = "ML_PLAY_CONFIDENT" if score >= 72 else "ML_LEAN_ONLY" if score >= 60 else "ML_PASS_WEAK_EDGE"
+        scores.append(score); labels.append(label)
+    d["ML Confidence Gate Score"] = scores
+    d["ML Confidence Gate"] = labels
+    d["ML Confidence Gate Version"] = "MONEYLINE_CONFIDENCE_GATE_2026_06_13"
+    return d
+
+
+# =========================
+# LINE-AWARE HIT RATE ENGINE
+# Version: LINE_AWARE_HIT_RATE_ENGINE_2026_06_13
+#
+# Purpose:
+# - Uses embedded Pitch.csv logs from Opening Day -> pull date.
+# - Calculates how often a pitcher cleared TODAY'S line, not a fixed historical line.
+# - Also checks close-line bands because lines change over time.
+# - Adds season hit rate, recent hit rate, opponent hit rate, and line-band rate.
+# - Uses hit-rate context as a small projection/decision modifier.
+#
+# Important:
+# - This does NOT assume lines were always 5.5 or always the same.
+# - It compares historical K outcomes to the current posted line dynamically.
+# =========================
+LINE_AWARE_HIT_RATE_ENGINE_VERSION = "LINE_AWARE_HIT_RATE_ENGINE_2026_06_13"
+
+def _lahr_num(x, default=None):
+    try:
+        if x in (None, "", "—", "WAITING_FOR_UD_LINE"):
+            return default
+        v = float(x)
+        if pd.isna(v):
+            return default
+        return v
+    except Exception:
+        return default
+
+def _lahr_norm_name(x):
+    try:
+        s = str(x or "").strip().lower().replace(".", "")
+        s = re.sub(r"[^a-z0-9\s'\-]", "", s)
+        return re.sub(r"\s+", " ", s).strip()
+    except Exception:
+        return str(x or "").strip().lower()
+
+def _lahr_line(row):
+    for c in ["UD/Line", "Line", "line", "K Line"]:
+        v = _lahr_num(row.get(c), None)
+        if v is not None:
+            return v
+    return None
+
+def _lahr_pitcher_logs_for(player):
+    try:
+        df = st.session_state.get("pitcher_season_logs")
+        if not isinstance(df, pd.DataFrame) or df.empty:
+            df = st.session_state.get("pitcher_30_day_logs")
+        if not isinstance(df, pd.DataFrame) or df.empty or "Pitcher" not in df.columns:
+            return pd.DataFrame()
+        d = df.copy()
+        d["_p_norm"] = d["Pitcher"].map(_lahr_norm_name)
+        d = d[d["_p_norm"] == _lahr_norm_name(player)].copy()
+        if d.empty:
+            return pd.DataFrame()
+        for c in ["K", "IP", "BF", "Pitch Count", "ER", "HR", "BB", "WHIP"]:
+            if c in d.columns:
+                d[c] = pd.to_numeric(d[c], errors="coerce")
+        if "Date" in d.columns:
+            d["_date"] = pd.to_datetime(d["Date"], errors="coerce")
+            d = d.sort_values("_date")
+        return d
+    except Exception:
+        return pd.DataFrame()
+
+def _lahr_current_opponent(row):
+    try:
+        # Prefer opponent already calculated by OHE if present.
+        opp = str(row.get("Opp Hist Opponent") or "").upper().strip()
+        if opp:
+            return opp[:3]
+    except Exception:
+        pass
+    try:
+        if "_ohe_current_opponent_from_row" in globals():
+            return str(_ohe_current_opponent_from_row(row)).upper()[:3]
+    except Exception:
+        pass
+    return ""
+
+def _lahr_rate(values, line):
+    vals = [float(x) for x in values if x is not None and not pd.isna(x)]
+    if not vals or line is None:
+        return "", 0, 0
+    # For strikeout over, clearing line means K > line. 5.5 clears at 6+.
+    clears = sum(1 for x in vals if x > float(line))
+    return round((clears / len(vals)) * 100, 1), clears, len(vals)
+
+def _lahr_profile(player, line, row):
+    d = _lahr_pitcher_logs_for(player)
+    if d.empty or line is None or "K" not in d.columns:
+        return {}
+
+    k_vals = d["K"].dropna().astype(float).tolist()
+    season_rate, season_clears, season_games = _lahr_rate(k_vals, line)
+
+    recent = d.tail(5)
+    recent_vals = recent["K"].dropna().astype(float).tolist() if "K" in recent.columns else []
+    recent_rate, recent_clears, recent_games = _lahr_rate(recent_vals, line)
+
+    # Close-line band: not assuming historical line was today's line.
+    # This shows how many historical K outcomes were near today's threshold.
+    # Example current line 5.5: band checks outcomes around 4.5 to 6.5.
+    band_low = float(line) - 1.0
+    band_high = float(line) + 1.0
+    band_vals = [x for x in k_vals if band_low <= x <= band_high + 1.0]
+    band_rate, band_clears, band_games = _lahr_rate(band_vals, line)
+
+    # Opponent-specific hit rate vs today's current line
+    opp = _lahr_current_opponent(row)
+    opp_rate = opp_clears = opp_games = ""
+    if opp and "Opponent" in d.columns:
+        od = d[d["Opponent"].astype(str).str.upper().str.contains(opp, na=False)].copy()
+        if not od.empty:
+            opp_vals = od["K"].dropna().astype(float).tolist()
+            opp_rate, opp_clears, opp_games = _lahr_rate(opp_vals, line)
+
+    # Also capture actual K results for transparency.
+    last_results = ", ".join(str(int(x)) if float(x).is_integer() else str(round(x, 1)) for x in k_vals[-8:])
+
+    return {
+        "Line Aware Current Line": line,
+        "Line Aware Season Hit Rate %": season_rate,
+        "Line Aware Season Clears": season_clears,
+        "Line Aware Season Games": season_games,
+        "Line Aware Recent5 Hit Rate %": recent_rate,
+        "Line Aware Recent5 Clears": recent_clears,
+        "Line Aware Recent5 Games": recent_games,
+        "Line Aware Band Hit Rate %": band_rate,
+        "Line Aware Band Clears": band_clears,
+        "Line Aware Band Games": band_games,
+        "Line Aware Opp Hit Rate %": opp_rate,
+        "Line Aware Opp Clears": opp_clears,
+        "Line Aware Opp Games": opp_games,
+        "Line Aware Last K Results": last_results,
+        "Line Aware Engine Version": LINE_AWARE_HIT_RATE_ENGINE_VERSION,
+    }
+
+def _lahr_adjust(row):
+    """
+    Uses hit rate as a confidence/projection stabilizer.
+    This is conservative:
+    - Strong hit-rate support can slightly lift/keep overs.
+    - Poor hit-rate support can slightly trim inflated overs.
+    - It does not force projection to hit rate alone.
+    """
+    proj = _lahr_num(row.get("Reality K Projection"), None)
+    if proj is None:
+        proj = _lahr_num(row.get("Suppressed Final K Projection"), None)
+    if proj is None:
+        proj = _lahr_num(row.get("Final K Projection"), None)
+    if proj is None:
+        proj = _lahr_num(row.get("K PROJ"), None)
+    line = _lahr_line(row)
+    if proj is None or line is None:
+        return 0.0, "NO_LINE_OR_PROJ", ""
+
+    season_rate = _lahr_num(row.get("Line Aware Season Hit Rate %"), None)
+    recent_rate = _lahr_num(row.get("Line Aware Recent5 Hit Rate %"), None)
+    band_rate = _lahr_num(row.get("Line Aware Band Hit Rate %"), None)
+    opp_rate = _lahr_num(row.get("Line Aware Opp Hit Rate %"), None)
+    season_games = _lahr_num(row.get("Line Aware Season Games"), 0)
+    recent_games = _lahr_num(row.get("Line Aware Recent5 Games"), 0)
+    opp_games = _lahr_num(row.get("Line Aware Opp Games"), 0)
+
+    if season_games < 3 or season_rate is None:
+        return 0.0, "LOW_HIT_RATE_SAMPLE", ""
+
+    # Weighted hit-rate score vs today's current line
+    rates = []
+    weights = []
+    rates.append(season_rate); weights.append(0.50)
+    if recent_rate is not None and recent_games >= 3:
+        rates.append(recent_rate); weights.append(0.25)
+    if band_rate is not None and _lahr_num(row.get("Line Aware Band Games"), 0) >= 2:
+        rates.append(band_rate); weights.append(0.15)
+    if opp_rate is not None and opp_games >= 1:
+        rates.append(opp_rate); weights.append(0.10)
+
+    hit_score = sum(r*w for r, w in zip(rates, weights)) / sum(weights)
+
+    edge = proj - line
+    adj = 0.0
+    label = "HIT_RATE_NEUTRAL"
+
+    # If projection likes over but hit rate is bad, trim.
+    if edge >= 0.65 and hit_score < 45:
+        adj -= 0.28
+        label = "HIT_RATE_TRIM_OVER"
+    elif edge >= 1.25 and hit_score < 55:
+        adj -= 0.18
+        label = "HIT_RATE_MICRO_TRIM_OVER"
+
+    # If projection is close or under but hit rate strongly supports clearing line, lift slightly.
+    elif edge <= 0.35 and hit_score >= 65:
+        adj += 0.22
+        label = "HIT_RATE_LIFT_OVER_SUPPORT"
+    elif edge >= 0.35 and hit_score >= 70:
+        adj += 0.12
+        label = "HIT_RATE_CONFIRM_OVER"
+
+    # If line-aware history strongly supports under and projection is thin, push to pass/under.
+    if edge > -0.35 and edge < 0.70 and hit_score <= 35:
+        adj -= 0.18
+        label = "HIT_RATE_UNDER_SUPPORT"
+
+    # Protect true ceiling if season/recent/skill support exists.
+    support = 0
+    for c, thresh in [("Season Avg K", 6.2), ("Season Recent3 K", 6.0), ("Pitcher K%", 25), ("Opp K%", 23), ("Putaway/Whiff", 24)]:
+        v = _lahr_num(row.get(c), None)
+        if v is not None and v >= thresh:
+            support += 1
+    if support >= 4 and adj < 0:
+        adj = max(adj, -0.12)
+        label += "|CEILING_PROTECTED"
+
+    adj = round(max(-0.35, min(0.30, adj)), 2)
+    reason = f"hit_score {hit_score:.1f}; season {season_rate}; recent {recent_rate}; band {band_rate}; opp {opp_rate}; edge {edge:.2f}"
+    return adj, label, reason
+
+def _lahr_decision(row, proj):
+    line = _lahr_line(row)
+    if proj is None:
+        return "NO_PROJECTION", ""
+    if line is None:
+        return "NO_UD_LINE", ""
+    edge = round(proj - line, 2)
+    if edge >= 1.30:
+        return "🔥 OVER", edge
+    if edge >= 0.70:
+        return "⚠️ OVER LEAN", edge
+    if edge <= -1.30:
+        return "🔥 UNDER", edge
+    if edge <= -0.70:
+        return "⚠️ UNDER LEAN", edge
+    return "🚫 PASS — LINE HIT RATE THIN EDGE", edge
+
+def _lahr_apply(df):
+    if df is None or df.empty:
+        return df
+    d = df.copy()
+    pcol = next((c for c in ["Pitcher", "Player", "Name"] if c in d.columns), None)
+    if not pcol:
+        return d
+
+    profiles = []
+    for _, rr in d.iterrows():
+        row = rr.to_dict()
+        player = row.get(pcol, "")
+        line = _lahr_line(row)
+        profiles.append(_lahr_profile(player, line, row))
+
+    prof_df = pd.DataFrame(profiles)
+    if not prof_df.empty:
+        for c in prof_df.columns:
+            if c in d.columns:
+                d.drop(columns=[c], inplace=True)
+        d = pd.concat([d.reset_index(drop=True), prof_df.reset_index(drop=True)], axis=1)
+
+    adjs, labels, reasons, final_projs, decisions, edges = [], [], [], [], [], []
+    for _, rr in d.iterrows():
+        row = rr.to_dict()
+        base = _lahr_num(row.get("Reality K Projection"), None)
+        if base is None:
+            base = _lahr_num(row.get("K PROJ"), None)
+        adj, label, reason = _lahr_adjust(row)
+        final = round(base + adj, 2) if base is not None else None
+        dec, edge = _lahr_decision(row, final)
+        adjs.append(adj); labels.append(label); reasons.append(reason)
+        final_projs.append(final if final is not None else "")
+        decisions.append(dec); edges.append(edge)
+
+    d["Line Aware Hit Rate Adjustment"] = adjs
+    d["Line Aware Hit Rate Label"] = labels
+    d["Line Aware Hit Rate Reason"] = reasons
+    d["Line Aware Final K Projection"] = final_projs
+    d["Line Aware Final K Edge"] = edges
+    d["Line Aware Final K Decision"] = decisions
+
+    try:
+        if bool(st.session_state.get("use_line_aware_hit_rate_projection", True)):
+            if "K PROJ" in d.columns:
+                d["Pre-LineAware K PROJ"] = d["K PROJ"]
+                d["K PROJ"] = d["Line Aware Final K Projection"]
+            if "Decision" in d.columns:
+                d["Pre-LineAware Decision"] = d["Decision"]
+                d["Decision"] = d["Line Aware Final K Decision"]
+            if "Edge Gap" in d.columns:
+                d["Pre-LineAware Edge Gap"] = d["Edge Gap"]
+                d["Edge Gap"] = d["Line Aware Final K Edge"]
+            if "Main Engine Action" in d.columns:
+                d["Pre-LineAware Main Engine Action"] = d["Main Engine Action"]
+                d["Main Engine Action"] = d["Line Aware Final K Decision"]
+    except Exception:
+        pass
+
+    return d
+
+if "build_kproj_table" in globals():
+    _prev_lahr_build_kproj_table = build_kproj_table
+    def build_kproj_table(board):
+        df = _prev_lahr_build_kproj_table(board)
+        try:
+            return _lahr_apply(df)
+        except Exception:
+            return df
+
+def render_line_aware_hit_rate_panel():
+    st.markdown("### 📈 Line-Aware Hit Rate Engine")
+    st.caption("Calculates how often each pitcher cleared TODAY'S current line using all embedded game logs from Opening Day. Lines do not have to be the same historically.")
+    try:
+        st.session_state["use_line_aware_hit_rate_projection"] = st.toggle(
+            "Use Line-Aware Hit Rate Projection",
+            value=st.session_state.get("use_line_aware_hit_rate_projection", True),
+            help="ON = K PROJ/Decision include line-aware hit-rate adjustment.",
+            key="use_line_aware_hit_rate_projection_unique"
+        )
+    except Exception:
+        pass
+    try:
+        df = build_kproj_table(board) if "board" in globals() else pd.DataFrame()
+        cols = [c for c in [
+            "Pitcher", "Matchup", "Pre-LineAware K PROJ", "K PROJ",
+            "UD/Line", "Line Aware Final K Edge", "Line Aware Final K Decision",
+            "Line Aware Season Hit Rate %", "Line Aware Season Clears", "Line Aware Season Games",
+            "Line Aware Recent5 Hit Rate %", "Line Aware Band Hit Rate %",
+            "Line Aware Opp Hit Rate %", "Line Aware Opp Games",
+            "Line Aware Hit Rate Adjustment", "Line Aware Hit Rate Label",
+            "Line Aware Last K Results", "Line Aware Hit Rate Reason"
+        ] if c in df.columns]
+        if cols:
+            st.dataframe(df[cols], use_container_width=True, hide_index=True)
+        else:
+            st.info("Line-aware hit rate will populate after K board builds.")
+    except Exception as e:
+        st.info(f"Line-aware hit rate waiting: {e}")
+
 tab_kproj, tab_pitcher_fs, tab_moneyline, tab_mlb30_puller, tab_fs_ud_watcher, tab_iq, tab_30d_learning, tab_learning_lab, tab_calibration, tab2, tab3, tab4, tab5, tab6 = st.tabs([
     "K PROJ / UPSIDE",
     "PITCHER FS",
