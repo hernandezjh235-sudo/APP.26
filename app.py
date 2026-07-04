@@ -419,6 +419,240 @@ def save_json(path, data):
         pass
 
 # =========================
+# GITHUB BACKUP — SAFE AUTO PUSH AFTER SAVE/GRADE
+# =========================
+# This backs up learning data and saved boards after important write actions.
+# It does NOT affect projections, K math, Pitching Outs math, grading math, or UI decisions.
+
+def _github_backup_secret(key, default=""):
+    try:
+        v = st.secrets.get(key, default)
+        if v is not None and str(v).strip():
+            return str(v).strip()
+    except Exception:
+        pass
+    try:
+        v = os.getenv(key, default)
+        if v is not None and str(v).strip():
+            return str(v).strip()
+    except Exception:
+        pass
+    return default
+
+def _github_backup_config():
+    token = (
+        _github_backup_secret("GITHUB_BACKUP_TOKEN", "")
+        or _github_backup_secret("GITHUB_TOKEN", "")
+        or _github_backup_secret("GH_TOKEN", "")
+    )
+    repo = (
+        _github_backup_secret("GITHUB_BACKUP_REPO", "")
+        or _github_backup_secret("GITHUB_REPO", "")
+    )
+    branch = (
+        _github_backup_secret("GITHUB_BACKUP_BRANCH", "")
+        or _github_backup_secret("GITHUB_BRANCH", "")
+        or "main"
+    )
+    return token, repo, branch
+
+def _github_backup_headers(token):
+    return {
+        "Authorization": f"Bearer {token}",
+        "Accept": "application/vnd.github+json",
+        "User-Agent": "onewaypickz-mlb-engine-backup",
+        "X-GitHub-Api-Version": "2022-11-28",
+    }
+
+def _github_backup_get_sha(repo, branch, remote_path, headers):
+    try:
+        url = f"https://api.github.com/repos/{repo}/contents/{remote_path}"
+        r = requests.get(url, headers=headers, params={"ref": branch}, timeout=15)
+        if r.status_code == 200:
+            return (r.json() or {}).get("sha")
+        return None
+    except Exception:
+        return None
+
+def _github_backup_put_file(repo, branch, remote_path, content_bytes, message, headers):
+    try:
+        import base64
+        if isinstance(content_bytes, str):
+            content_bytes = content_bytes.encode("utf-8")
+        url = f"https://api.github.com/repos/{repo}/contents/{remote_path}"
+        payload = {
+            "message": message,
+            "content": base64.b64encode(content_bytes or b"").decode("ascii"),
+            "branch": branch,
+        }
+        sha = _github_backup_get_sha(repo, branch, remote_path, headers)
+        if sha:
+            payload["sha"] = sha
+        r = requests.put(url, headers=headers, json=payload, timeout=25)
+        ok = r.status_code in (200, 201)
+        msg = ""
+        try:
+            msg = (r.json() or {}).get("message") or ""
+        except Exception:
+            msg = r.text[:160]
+        return {"path": remote_path, "ok": ok, "status_code": r.status_code, "message": msg[:180]}
+    except Exception as e:
+        return {"path": remote_path, "ok": False, "status_code": None, "message": str(e)[:180]}
+
+def _github_backup_file_bytes(local_path):
+    try:
+        lp = Path(local_path)
+        if lp.exists() and lp.is_file():
+            return lp.read_bytes()
+    except Exception:
+        pass
+    return None
+
+def _github_backup_build_graded_history_csv():
+    """Create a portable CSV from RESULT_LOG so GitHub always has a readable grade history."""
+    try:
+        rows = load_json(RESULT_LOG, [])
+        if not isinstance(rows, list):
+            rows = []
+        if rows:
+            df = pd.DataFrame(rows)
+        else:
+            df = pd.DataFrame()
+        if not df.empty:
+            preferred = [
+                "date", "Date", "pitcher", "Pitcher", "matchup", "Matchup",
+                "pick_side", "line", "projection", "actual", "actual_ip",
+                "graded_result", "win", "result", "confidence", "data_score",
+                "line_source", "game_pk", "pitcher_id", "pick_id"
+            ]
+            cols = []
+            for c in preferred:
+                if c in df.columns and c not in cols:
+                    cols.append(c)
+            cols += [c for c in df.columns if c not in cols]
+            df = df[cols]
+        return df.to_csv(index=False).encode("utf-8")
+    except Exception as e:
+        return f"github_backup_csv_error,{str(e)}\n".encode("utf-8")
+
+def _github_backup_payload_files():
+    """Return list of (remote_path, bytes) to push. Missing local files are skipped."""
+    files = []
+
+    # Always generate a readable CSV from result log.
+    files.append(("learning_data/graded_history.csv", _github_backup_build_graded_history_csv()))
+
+    # Back up core JSON logs into learning_data so they are easy to find in GitHub.
+    core = [
+        (PICK_LOG, "learning_data/auto_pick_log.json"),
+        (RESULT_LOG, "learning_data/auto_result_log.json"),
+        (LEARN_FILE, "learning_data/pitcher_learning.json"),
+        (CLV_FILE, "learning_data/clv_tracker.json"),
+        (SIGNAL_TRACKING_FILE, "learning_data/signal_tracking.json"),
+        (LONG_BACKTEST_FILE, "learning_data/long_backtest_rows.json"),
+        (LINE_HISTORY_FILE, "learning_data/line_history.json"),
+        (LINEUP_CACHE_FILE, "learning_data/locked_lineup_cache.json"),
+        (CALIBRATION_ENGINE_FILE, "learning_data/true_calibration_engine.json"),
+    ]
+    for local_path, remote_path in core:
+        b = _github_backup_file_bytes(local_path)
+        if b is not None:
+            files.append((remote_path, b))
+
+    # If the project already has csv files in learning_data, back those up too.
+    try:
+        for csv_path in Path("learning_data").glob("*.csv"):
+            b = _github_backup_file_bytes(csv_path)
+            if b is not None:
+                files.append((f"learning_data/{csv_path.name}", b))
+    except Exception:
+        pass
+
+    # Optional logs defined later in the app (Moneyline / Pitching Outs beta / other testers).
+    try:
+        optional_log_names = [
+            "ML_PICK_LOG", "ML_RESULT_LOG",
+            "OUTS_PICK_LOG", "OUTS_RESULT_LOG",
+            "PITCHING_OUTS_PICK_LOG", "PITCHING_OUTS_RESULT_LOG",
+            "BETA_OUTS_PICK_LOG", "BETA_OUTS_RESULT_LOG",
+        ]
+        for var_name in optional_log_names:
+            lp = globals().get(var_name)
+            if lp:
+                b = _github_backup_file_bytes(lp)
+                if b is not None:
+                    files.append((f"learning_data/{Path(str(lp)).name}", b))
+    except Exception:
+        pass
+
+    # De-dupe by remote path, preserving latest.
+    dedup = {}
+    for rp, b in files:
+        if b is not None:
+            dedup[rp] = b
+    return list(dedup.items())
+
+def github_backup_now(reason="manual"):
+    """Push learning/saved board files to GitHub. Safe no-op if secrets are missing."""
+    token, repo, branch = _github_backup_config()
+    if not token or not repo:
+        msg = "GitHub backup skipped: missing GITHUB_BACKUP_TOKEN and/or GITHUB_BACKUP_REPO."
+        try:
+            st.session_state["github_backup_last"] = {"ok": False, "reason": reason, "message": msg, "time": now_iso()}
+        except Exception:
+            pass
+        return {"ok": False, "message": msg, "files": []}
+
+    headers = _github_backup_headers(token)
+    stamp = now_iso()
+    files = _github_backup_payload_files()
+    if not files:
+        return {"ok": False, "message": "No backup files found.", "files": []}
+
+    results = []
+    ok_count = 0
+    message = f"Auto backup learning data after {reason} — {stamp}"
+    for remote_path, content_bytes in files:
+        res = _github_backup_put_file(repo, branch, remote_path, content_bytes, message, headers)
+        results.append(res)
+        if res.get("ok"):
+            ok_count += 1
+
+    ok = ok_count > 0 and ok_count == len(results)
+    summary = f"GitHub backup {'successful' if ok else 'partial/failed'}: {ok_count}/{len(results)} file(s)."
+    try:
+        st.session_state["github_backup_last"] = {
+            "ok": ok,
+            "reason": reason,
+            "message": summary,
+            "time": stamp,
+            "repo": repo,
+            "branch": branch,
+            "files": results,
+        }
+    except Exception:
+        pass
+    return {"ok": ok, "message": summary, "files": results, "repo": repo, "branch": branch}
+
+def github_backup_status_ui():
+    """Small status helper for Settings/sidebar/debug pages."""
+    try:
+        last = st.session_state.get("github_backup_last")
+        if not last:
+            return
+        if last.get("ok"):
+            st.success(f"✅ {last.get('message')} ({last.get('time')})")
+        else:
+            st.warning(f"⚠️ {last.get('message')} ({last.get('time')})")
+        with st.expander("GitHub backup details", expanded=False):
+            st.write({k: v for k, v in last.items() if k != "files"})
+            if last.get("files"):
+                st.dataframe(pd.DataFrame(last.get("files")), use_container_width=True, hide_index=True)
+    except Exception:
+        pass
+
+
+# =========================
 # SAVED MANUAL ODDS + NO-VIG HELPERS
 # =========================
 def american_to_implied_prob(price):
@@ -9122,6 +9356,10 @@ def save_many_once(new_picks):
             ids.add(p.get("pick_id"))
             added += 1
     save_json(PICK_LOG, picks[-10000:])
+    try:
+        github_backup_now('save_official_k_board')
+    except Exception:
+        pass
     return added
 
 
@@ -9489,6 +9727,10 @@ def merge_restored_graded_history_into_result_log(force=False):
             seen.add(k)
             added += 1
         save_json(RESULT_LOG, clean_existing[-10000:])
+        try:
+            github_backup_now('restore_or_merge_graded_history')
+        except Exception:
+            pass
         status.update({
             "converted_rows": converted,
             "added_rows": added,
@@ -9800,6 +10042,10 @@ def grade_finished_games():
         graded += 1
     save_json(PICK_LOG, picks[-10000:])
     save_json(RESULT_LOG, results[-10000:])
+    try:
+        github_backup_now('grade_k_results')
+    except Exception:
+        pass
     return graded
 
 
@@ -10045,6 +10291,10 @@ def grade_finished_games_from_manual_dataframe(manual_df, allow_overwrite=False)
 
     save_json(PICK_LOG, picks[-10000:])
     save_json(RESULT_LOG, results[-10000:])
+    try:
+        github_backup_now('grade_k_results_by_date')
+    except Exception:
+        pass
     diag["status"] = "OK"
     diag["results_after"] = len(results)
     diag["saved_snapshots"] = len(picks)
@@ -28360,6 +28610,10 @@ def _ow_save_moneyline_board(df):
         existing.append(r)
         added += 1
     save_json(ML_PICK_LOG, existing)
+    try:
+        github_backup_now('save_moneyline_board')
+    except Exception:
+        pass
     return {"saved": added, "total_saved_rows": len(existing), "path": ML_PICK_LOG}
 
 
@@ -28416,6 +28670,10 @@ def _ow_grade_moneyline_saved():
         graded += 1
     save_json(ML_PICK_LOG, picks)
     save_json(ML_RESULT_LOG, results)
+    try:
+        github_backup_now('grade_moneyline_results')
+    except Exception:
+        pass
     return {"graded": graded, "pending_checked_dates": dates_to_check, "final_scores_found": len(scores), "pick_log": ML_PICK_LOG, "result_log": ML_RESULT_LOG}
 
 
@@ -28840,6 +29098,22 @@ with tab6:
     st.code(VOLUME_MISS_LEARNING_FILE)
     st.write("Manager Pull Learning File:")
     st.code(MANAGER_PULL_LEARNING_FILE)
+
+    st.subheader("GitHub Backup")
+    token_ok, repo_cfg, branch_cfg = _github_backup_config()
+    st.write(f"Repo: `{repo_cfg or 'MISSING GITHUB_BACKUP_REPO'}`")
+    st.write(f"Branch: `{branch_cfg}`")
+    st.write("Token:", "✅ found" if token_ok else "❌ missing")
+    if st.button("🔐 Test / Push GitHub Backup Now", use_container_width=True):
+        res = github_backup_now("manual_settings_test")
+        if res.get("ok"):
+            st.success(res.get("message"))
+        else:
+            st.warning(res.get("message"))
+        if res.get("files"):
+            st.dataframe(pd.DataFrame(res.get("files")), use_container_width=True, hide_index=True)
+    github_backup_status_ui()
+
     st.subheader("Advanced Model Status")
     xgb_train_df = build_xgb_training_frame()
     st.write(f"XGBoost training samples available: {len(xgb_train_df)} / {XGB_MIN_GRADED_SAMPLES} needed")
