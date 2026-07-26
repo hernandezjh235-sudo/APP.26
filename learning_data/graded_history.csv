@@ -299,3 +299,399 @@ Date,Pitcher,Pick,Line,Actual_K,Result,Matchup,Actual_IP
 2026-06-27,Bryce Elder,O,4.5,4.0,L,,
 2026-06-27,Slade Cecconi,O,4.5,4.0,L,,
 2026-06-27,Logan Gilbert,O,5.5,7.0,W,,
+,,O 6.5,,,WIN,,
+,,U 6.5,,,WIN,,
+,,O 3.5,,,LOSS,,
+,,O 5.5,,,LOSS,,
+,,U 4.5,,,WIN,,
+,,U 5.5,,,LOSS,,
+,,U 3.5,,,WIN,,
+,,O 4.5,,,WIN,,
+,,O 1.5,,,WIN,,
+,,U 2.5,,,WIN,,
+,,O 7.5,,,WIN,,
+,,O 8.5,,,LOSS,,
+,,NL,,,NL,,
+,,O,,,L,,
+,,U,,,L,,
+,,N,,,NO LINE,,
+,,U 7.5,,,WIN,,
+,,OVER,,,,,
+,,UNDER,,,,,
+,,NO LINE,,,,,
+2026-07-04,Aaron Civale,,3.5,,,MIA @ ATH,4.666666666666667
+2026-07-05,Aaron Nola,,5.5,,,PHI @ KC,7.0
+2026-07-10,Aaron Nola,,5.5,8.0,WIN,PHI @ DET,5.0
+2026-07-08,Alan Rangel,,4.5,5.0,LOSS,PHI @ CIN,3.333333333333333
+2026-07-09,Andre Pallante,,3.5,2.0,LOSS,MIL @ STL,5.0
+2026-07-07,Andrew Abbott,,5.5,,,PHI @ CIN,6.0
+2026-07-07,Andrew Abbott,,4.5,,,PHI @ CIN,6.0
+2026-07-07,Andrew Alvarez,,4.5,,,HOU @ WSH,5.666666666666667
+2026-07-09,Anthony Kay,,4.5,4.0,WIN,BOS @ CWS,5.333333333333333
+2026-07-09,Bailey Ober,,,5.0,NO LINE,CLE @ MIN,5.0
+2026-07-09,Brady Singer,,5.5,5.0,WIN,PHI @ CIN,7.333333333333333
+2026-07-06,Brandon Pfaadt,,3.5,,,AZ @ SD,5.0
+2026-07-05,Brandon Sproat,,4.5,,,MIL @ AZ,4.0
+2026-07-04,Brandon Woodruff,,4.5,,,MIL @ AZ,3.6666666666666665
+2026-07-04,Brandon Young,,4.5,,,BAL @ CIN,5.0
+2026-07-10,Brandon Young,,4.5,5.0,LOSS,KC @ BAL,7.0
+2026-07-04,Braxton Ashcraft,,5.5,,,PIT @ WSH,5.666666666666667
+2026-07-04,Brendan Beck,,,,,MIN @ NYY,3.6666666666666665
+2026-07-07,Bryan Woo,,5.5,,,SEA @ MIA,5.0
+2026-06-27,Bryce Elder,O,,4.0,,,
+2026-07-09,Bryce Elder,,4.5,3.0,LOSS,ATL @ PIT,4.0
+2026-07-09,Bryce Miller,,6.5,3.0,WIN,SEA @ MIA,5.0
+2026-07-05,Bubba Chandler,,4.5,,,PIT @ WSH,4.0
+2026-07-05,Cade Cavalli,,5.5,,,PIT @ WSH,2.333333333333333
+2026-07-10,Cal Quantrill,,3.5,1.0,WIN,HOU @ TEX,6.0
+2026-07-06,Cam Schlittler,,6.5,,,NYY @ TB,8.0
+2026-07-10,Carson Palmquist,,1.5,4.0,WIN,NYY @ WSH,3.0
+2026-07-05,Casey Mize,,4.5,,,DET @ TEX,6.666666666666667
+2026-07-08,Chase Burns,,7.5,2.0,WIN,PHI @ CIN,5.0
+2026-07-05,Chris Murphy,,1.5,,,CWS @ CLE,0.6666666666666666
+2026-07-04,Chris Sale,,7.5,,,NYM @ ATL,5.0
+2026-07-10,Chris Sale,,5.5,5.0,WIN,ATL @ STL,3.0
+2026-07-08,Christian Scott,,5.5,5.0,WIN,KC @ NYM,5.0
+2026-07-07,Cionel Pérez,,1.5,,,KC @ NYM,1.0
+2026-07-08,Colin Rea,,4.5,,,CHC @ BAL,5.333333333333333
+2026-07-08,Connor Prielipp,,5.5,6.0,WIN,CLE @ MIN,5.0
+2026-07-06,Cristopher Sánchez,,6.5,,,PHI @ KC,3.333333333333333
+2026-07-09,David Peterson,,4.5,2.0,WIN,CHC @ BAL,5.0
+2026-07-08,Davis Martin,,4.5,2.0,LOSS,BOS @ CWS,4.0
+2026-07-08,Dean Kremer,,4.5,,,CHC @ BAL,5.0
+2026-07-04,Drew Rasmussen,,5.5,,,TB @ HOU,5.0
+2026-07-09,Drew Rasmussen,,5.5,2.0,LOSS,NYY @ TB,2.333333333333333
+2026-07-06,Dustin May,,4.5,,,MIL @ STL,4.666666666666667
+2026-07-08,Dylan Cease,,,,,TOR @ SF,8.0
+2026-06-30,Eduardo Rodriguez,U,,1.0,,,
+2026-07-05,Eduardo Rodriguez,,4.5,,,MIL @ AZ,6.0
+2026-07-10,Eduardo Rodriguez,,4.5,5.0,LOSS,AZ @ LAD,6.0
+2026-07-05,Emerson Hancock,,4.5,,,TOR @ SEA,7.0
+2026-07-05,Emmet Sheehan,,5.5,,,SD @ LAD,4.333333333333333
+2026-06-30,Eric Lauer,U,,2.0,,,
+2026-07-06,Eric Lauer,,4.5,,,COL @ LAD,6.0
+2026-07-05,Eury Pérez,,4.5,,,MIA @ ATH,7.0
+2026-07-08,Foster Griffin,,4.5,9.0,WIN,HOU @ WSH,7.0
+2026-07-09,Framber Valdez,,5.5,9.0,LOSS,ATH @ DET,7.0
+2026-07-06,Freddy Peralta,,4.5,,,NYM @ ATL,4.666666666666667
+2026-07-08,Gabriel Hughes,,2.5,7.0,LOSS,COL @ LAD,6.0
+2026-06-30,Gage Jump,O,,5.0,,,
+2026-07-05,Gage Jump,,5.5,,,MIA @ ATH,3.0
+2026-07-09,Gavin Williams,,5.5,11.0,LOSS,CLE @ MIN,7.0
+2026-07-08,George Kirby,,4.5,7.0,LOSS,SEA @ MIA,6.0
+2026-07-07,Germán Márquez,,2.5,,,AZ @ SD,5.0
+2026-07-08,Gerrit Cole,,4.5,6.0,LOSS,NYY @ TB,6.333333333333333
+2026-07-08,Grant Holmes,,4.5,5.0,WIN,ATL @ PIT,5.0
+2026-07-04,Griffin Canning,,4.5,,,SD @ LAD,4.0
+2026-07-09,Griffin Canning,,3.5,5.0,LOSS,AZ @ SD,4.666666666666667
+2026-07-06,Griffin Jax,,5.5,,,NYY @ TB,5.0
+2026-07-04,Hunter Brown,,5.5,,,TB @ HOU,4.0
+2026-07-10,Hunter Brown,,5.5,4.0,WIN,HOU @ TEX,6.0
+2026-07-07,Hunter Dobbins,,4.5,,,MIL @ STL,5.0
+2026-07-04,Hunter Greene,,6.5,,,BAL @ CIN,3.333333333333333
+2026-07-10,Hunter Greene,,6.5,12.0,LOSS,CHC @ CIN,7.0
+2026-07-07,Hurston Waldrep,,4.5,,,ATL @ PIT,3.333333333333333
+2026-07-07,Ian Seymour,,5.5,,,NYY @ TB,5.333333333333333
+2026-07-07,J.T. Ginn,,4.5,,,ATH @ DET,4.0
+2026-07-04,Jack Flaherty,,5.5,,,DET @ TEX,5.666666666666667
+2026-07-10,Jack Flaherty,,5.5,6.0,LOSS,PHI @ DET,6.0
+2026-07-09,Jack Perkins,,5.5,2.0,WIN,ATH @ DET,3.0
+2026-07-07,Jacob deGrom,,7.5,,,LAA @ TEX,5.0
+2026-07-10,Jacob Lopez,,1.5,1.0,LOSS,ATH @ CWS,1.6666666666666663
+2026-07-07,Jacob Misiorowski,,,,,MIL @ STL,7.0
+2026-07-08,Jake Bennett,,4.5,4.0,LOSS,BOS @ CWS,7.0
+2026-07-09,Janson Junk,,3.5,5.0,WIN,SEA @ MIA,5.0
+2026-07-08,Jared Jones,,4.5,8.0,LOSS,ATL @ PIT,6.0
+2026-07-05,Javier Assad,,3.5,,,STL @ CHC,4.666666666666667
+2026-07-08,Jeffrey Springs,,4.5,,,ATH @ DET,4.333333333333333
+2026-07-04,Jesús Luzardo,,6.5,,,PHI @ KC,6.0
+2026-07-09,Jesús Luzardo,,7.5,11.0,WIN,PHI @ CIN,7.0
+2026-07-05,Joe Ryan,,6.5,,,MIN @ NYY,7.0
+2026-07-07,Joey Cantillo,,4.5,,,CLE @ MIN,5.0
+2026-07-07,Joey Cantillo,,5.5,,,CLE @ MIN,5.0
+2026-07-08,Jose Cabrera,,3.5,2.0,WIN,AZ @ SD,4.333333333333333
+2026-07-07,José Soriano,,5.5,,,LAA @ TEX,6.0
+2026-07-05,JP Sears,,4.5,,,SD @ LAD,5.0
+2026-07-10,JP Sears,,3.5,3.0,WIN,TOR @ SD,4.333333333333333
+2026-07-07,Justin Wrobleski,,5.5,,,COL @ LAD,7.0
+2026-07-07,Justin Wrobleski,,4.5,,,COL @ LAD,7.0
+2026-07-06,Kevin Gausman,,5.5,,,TOR @ SF,5.333333333333333
+2026-07-05,Kumar Rocker,,4.5,,,DET @ TEX,4.333333333333333
+2026-07-05,Kyle Bradish,,6.5,,,BAL @ CIN,7.666666666666667
+2026-07-06,Kyle Freeland,,4.5,,,COL @ LAD,5.0
+2026-07-08,Kyle Harrison,,5.5,2.0,WIN,MIL @ STL,4.0
+2026-07-04,Kyle Leahy,,4.5,,,STL @ CHC,5.0
+2026-07-10,Kyle Leahy,,3.5,2.0,WIN,ATL @ STL,3.0
+2026-07-06,Landen Roupp,,4.5,,,TOR @ SF,8.0
+2026-06-27,Logan Gilbert,O,,7.0,,,
+2026-07-04,Logan Gilbert,,5.5,,,TOR @ SEA,7.333333333333333
+2026-07-09,Logan Henderson,,,4.0,NO LINE,MIL @ STL,5.333333333333333
+2026-06-27,Logan Webb,O,,6.0,,,
+2026-07-08,Logan Webb,,,,,TOR @ SF,7.0
+2026-07-05,Luinder Avila,,4.5,,,PHI @ KC,5.0
+2026-07-10,Luinder Avila,,4.5,3.0,WIN,KC @ BAL,5.0
+2026-07-10,Luis Castillo,,4.5,4.0,WIN,SEA @ TB,5.0
+2026-07-08,MacKenzie Gore,,6.5,7.0,WIN,LAA @ TEX,5.0
+2026-07-05,Martín Pérez,,4.5,,,NYM @ ATL,4.333333333333333
+2026-07-07,Matt Svanson,,,,,MIL @ STL,1.0
+2026-07-07,Matthew Boyd,,4.5,,,CHC @ BAL,6.0
+2026-07-05,Matthew Liberatore,,4.5,,,STL @ CHC,5.0
+2026-07-07,Max Meyer,,5.5,,,SEA @ MIA,5.0
+2026-07-07,Max Meyer,,6.5,,,SEA @ MIA,5.0
+2026-07-04,Merrill Kelly,,3.5,,,MIL @ AZ,5.0
+2026-07-09,Merrill Kelly,,3.5,6.0,LOSS,AZ @ SD,7.0
+2026-07-08,Michael King,,4.5,4.0,WIN,AZ @ SD,6.0
+2026-07-07,Michael Lorenzen,,3.5,,,COL @ LAD,6.0
+2026-07-08,Michael McGreevy,,3.5,6.0,WIN,MIL @ STL,6.333333333333333
+2026-07-04,Michael Wacha,,4.5,,,PHI @ KC,6.0
+2026-07-09,Michael Wacha,,4.5,5.0,LOSS,KC @ NYM,4.666666666666667
+2026-07-06,Mike Burrows,,3.5,,,HOU @ WSH,4.333333333333333
+2026-07-06,Miles Mikolas,,3.5,,,HOU @ WSH,6.0
+2026-07-09,Mitch Keller,,3.5,3.0,WIN,ATL @ PIT,3.0
+2026-07-09,Nathan Eovaldi,,6.5,10.0,WIN,LAA @ TEX,6.0
+2026-07-05,Nick Lodolo,,5.5,,,BAL @ CIN,6.0
+2026-07-10,Nick Martinez,,4.5,1.0,WIN,SEA @ TB,5.333333333333333
+2026-07-06,Noah Cameron,,4.5,,,PHI @ KC,5.0
+2026-07-07,Noah Schultz,,4.5,,,BOS @ CWS,5.0
+2026-07-05,Nolan McLean,,5.5,,,NYM @ ATL,6.0
+2026-07-10,Nolan McLean,,6.5,7.0,LOSS,BOS @ NYM,6.0
+2026-07-04,Parker Messick,,6.5,,,CWS @ CLE,5.0
+2026-07-10,Parker Messick,,5.5,1.0,WIN,CLE @ MIA,6.0
+2026-07-09,Patrick Sandoval,,4.5,5.0,WIN,BOS @ CWS,4.333333333333333
+2026-07-07,Paul Skenes,,6.5,,,ATL @ PIT,6.0
+2026-07-07,Payton Tolle,,5.5,,,BOS @ CWS,6.0
+2026-07-05,Peter Lambert,,4.5,,,TB @ HOU,5.666666666666667
+2026-06-30,Ranger Suarez,U,,8.0,,,
+2026-07-05,Ranger Suarez,,5.5,,,BOS @ LAA,2.6666666666666665
+2026-07-09,Reid Detmers,,5.5,6.0,LOSS,LAA @ TEX,4.0
+2026-07-06,Reynaldo López,,4.5,,,NYM @ ATL,5.0
+2026-07-04,Robbie Ray,,5.5,,,SF @ COL,6.0
+2026-07-10,Robbie Ray,,5.5,4.0,WIN,COL @ SF,5.0
+2026-07-07,Robert Gasser,,4.5,,,MIL @ STL,7.666666666666667
+2026-07-08,Roki Sasaki,,5.5,5.0,WIN,COL @ LAD,6.0
+2026-07-09,Ryan Feltner,,,3.0,NO LINE,COL @ SF,4.333333333333333
+2026-07-05,Ryan Johnson,,4.5,,,BOS @ LAA,4.0
+2026-07-05,Ryan Weathers,,5.5,,,MIN @ NYY,4.0
+2026-07-10,Ryan Weathers,,5.5,6.0,WIN,NYY @ WSH,5.333333333333333
+2026-07-04,Sam Aldegheri,,3.5,,,BOS @ LAA,4.0
+2026-07-04,Sandy Alcantara,,4.5,,,MIA @ ATH,8.0
+2026-07-10,Sandy Alcantara,,5.5,8.0,WIN,CLE @ MIA,7.0
+2026-07-04,Sean Burke,,5.5,,,CWS @ CLE,6.0
+2026-07-10,Sean Burke,,5.5,9.0,LOSS,ATH @ CWS,7.0
+2026-07-04,Sean Manaea,,4.5,,,NYM @ ATL,5.0
+2026-07-09,Sean Manaea,,4.5,6.0,LOSS,KC @ NYM,7.0
+2026-07-07,Seth Lugo,,4.5,,,KC @ NYM,4.333333333333333
+2026-07-07,Seth Lugo,,2.5,,,KC @ NYM,4.333333333333333
+2026-07-07,Shane Baz,,5.5,,,CHC @ BAL,6.0
+2026-07-04,Shane Bieber,,5.5,,,TOR @ SEA,4.0
+2026-07-10,Shane Bieber,,4.5,4.0,WIN,TOR @ SD,4.666666666666667
+2026-07-06,Shane Drohan,,4.5,,,MIL @ STL,6.0
+2026-07-08,Shane McClanahan,,5.5,5.0,WIN,NYY @ TB,6.333333333333333
+2026-07-04,Shota Imanaga,,5.5,,,STL @ CHC,4.666666666666667
+2026-07-10,Shota Imanaga,,5.5,5.0,LOSS,CHC @ CIN,5.0
+2026-06-27,Slade Cecconi,O,,4.0,,,
+2026-07-08,Slade Cecconi,,3.5,4.0,LOSS,CLE @ MIN,3.6666666666666665
+2026-07-04,Sonny Gray,,5.5,,,BOS @ LAA,6.0
+2026-07-10,Sonny Gray,,5.5,3.0,WIN,BOS @ NYM,6.0
+2026-07-08,Spencer Arrighetti,,4.5,2.0,WIN,HOU @ WSH,4.0
+2026-07-07,Spencer Miles,,3.5,,,TOR @ SF,4.0
+2026-07-08,Steven Cruz,,1.5,2.0,WIN,KC @ NYM,1.0
+2026-07-07,Taj Bradley,,6.5,,,CLE @ MIN,7.0
+2026-07-05,Tanner Bibee,,4.5,,,CWS @ CLE,4.0
+2026-07-05,Tanner Gordon,,3.5,,,SF @ COL,5.0
+2026-07-10,Tanner Gordon,,3.5,1.0,WIN,COL @ SF,5.0
+2026-07-07,Tarik Skubal,,8.5,,,ATH @ DET,5.0
+2026-07-07,Tarik Skubal,,7.5,,,ATH @ DET,5.0
+2026-07-07,Tatsuya Imai,,4.5,,,HOU @ WSH,3.6666666666666665
+2026-07-07,Trevor McDonald,,3.5,,,TOR @ SF,2.333333333333333
+2026-07-09,Trevor Rogers,,4.5,4.0,WIN,CHC @ BAL,6.0
+2026-07-05,Trey Yesavage,,5.5,,,TOR @ SEA,6.0
+2026-07-08,Troy Melton,,4.5,,,ATH @ DET,5.333333333333333
+2026-06-30,Tyler Mahle,U,,3.0,,,
+2026-07-05,Tyler Mahle,,4.5,,,SF @ COL,4.333333333333333
+2026-07-08,Tyler Phillips,,4.5,3.0,WIN,SEA @ MIA,5.0
+2026-07-08,Walbert Ureña,,4.5,3.0,WIN,LAA @ TEX,4.0
+2026-07-06,Walker Buehler,,3.5,,,AZ @ SD,5.0
+2026-07-07,Will Warren,,4.5,,,NYY @ TB,4.0
+2026-07-04,Yoshinobu Yamamoto,,6.5,,,SD @ LAD,7.0
+2026-07-07,Zac Gallen,,3.5,,,AZ @ SD,6.0
+2026-07-04,Zack Littell,,3.5,,,PIT @ WSH,6.0
+2026-07-07,Zack Wheeler,,7.5,,,PHI @ CIN,7.0
+2026-07-04,Zebby Matthews,,4.5,,,MIN @ NYY,4.666666666666667
+2026-07-10,Zebby Matthews,,5.5,3.0,LOSS,LAA @ MIN,6.0
+2026-07-10,Brandon Sproat,U,4.5,3.0,WIN,,
+2026-07-10,Braxton Ashcraft,U,6.5,6.0,WIN,,
+2026-07-11,Shane Drohan,NO LINE,,6.0,NO LINE,,
+2026-07-11,Bubba Chandler,NO LINE,,6.0,NO LINE,,
+2026-07-11,Ryan Johnson,U,4.5,1.0,WIN,,
+2026-07-11,Joe Ryan,U,7.5,6.0,WIN,,
+2026-07-11,Gage Jump,O,5.5,7.0,WIN,,
+2026-07-11,Bryan Hudson,O,1.5,0.0,LOSS,,
+2026-07-11,Kyle Freeland,U,4.5,9.0,LOSS,,
+2026-07-11,Tyler Mahle,U,5.5,4.0,WIN,,
+2026-07-11,Cam Schlittler,U,5.5,6.0,LOSS,,
+2026-07-11,Miles Mikolas,U,3.5,0.0,WIN,,
+2026-07-11,Freddy Peralta,U,5.5,6.0,LOSS,,
+2026-07-11,Logan Gilbert,U,5.5,5.0,WIN,,
+2026-07-11,Griffin Jax,U,5.5,3.0,WIN,,
+2026-07-11,Tanner Bibee,U,4.5,3.0,WIN,,
+2026-07-11,Eury Pérez,O,6.5,6.0,LOSS,,
+2026-07-11,Cristopher Sánchez,O,6.5,7.0,WIN,,
+2026-07-11,Casey Mize,O,5.5,5.0,LOSS,,
+2026-07-11,Noah Cameron,U,5.5,9.0,LOSS,,
+2026-07-11,Kyle Bradish,U,4.5,5.0,LOSS,,
+2026-07-11,Peter Lambert,U,4.5,7.0,LOSS,,
+2026-07-11,Kumar Rocker,U,4.5,6.0,LOSS,,
+2026-07-11,Javier Assad,U,3.5,4.0,LOSS,,
+2026-07-11,Nick Lodolo,U,4.5,4.0,WIN,,
+2026-07-11,Reynaldo López,U,3.5,3.0,WIN,,
+2026-07-11,Matthew Liberatore,U,4.5,6.0,LOSS,,
+2026-07-11,Trey Yesavage,U,4.5,1.0,WIN,,
+2026-07-11,Walker Buehler,U,3.5,1.0,WIN,,
+2026-07-11,Brandon Pfaadt,U,3.5,2.0,WIN,,
+2026-07-11,Yoshinobu Yamamoto,U,5.5,6.0,LOSS,,
+2026-07-12,Robert Gasser,NO LINE,,3.0,NO LINE,,
+2026-07-12,Paul Skenes,U,6.5,7.0,LOSS,,
+2026-07-12,Seth Lugo,O,4.5,6.0,WIN,,
+2026-07-12,Shane Baz,U,4.5,9.0,LOSS,,
+2026-07-12,Will Warren,U,4.5,2.0,WIN,,
+2026-07-12,Cade Cavalli,U,5.5,5.0,WIN,,
+2026-07-12,Matthew Boyd,O,5.5,3.0,LOSS,,
+2026-07-12,Andrew Abbott,U,4.5,3.0,WIN,,
+2026-07-12,Payton Tolle,U,5.5,7.0,LOSS,,
+2026-07-12,Zach Thornton,U,4.5,5.0,LOSS,,
+2026-07-12,Emerson Hancock,U,4.5,2.0,WIN,,
+2026-07-12,Ian Seymour,U,5.5,3.0,WIN,,
+2026-07-12,Zack Wheeler,U,7.5,10.0,LOSS,,
+2026-07-12,Tarik Skubal,O,7.5,5.0,LOSS,,
+2026-07-12,Joey Cantillo,U,4.5,9.0,LOSS,,
+2026-07-12,Tyler Phillips,O,3.5,1.0,LOSS,,
+2026-07-12,José Soriano,U,5.5,0.0,WIN,,
+2026-07-12,Taj Bradley,O,6.5,6.0,LOSS,,
+2026-07-12,J.T. Ginn,U,4.5,7.0,LOSS,,
+2026-07-12,Noah Schultz,U,4.5,4.0,WIN,,
+2026-07-12,JR Ritchie,U,3.5,2.0,WIN,,
+2026-07-12,Dustin May,U,4.5,4.0,WIN,,
+2026-07-12,Cristian Javier,U,3.5,4.0,LOSS,,
+2026-07-12,MacKenzie Gore,O,4.5,4.0,LOSS,,
+2026-07-12,Michael Lorenzen,U,3.5,1.0,WIN,,
+2026-07-12,Trevor McDonald,O,4.5,4.0,LOSS,,
+2026-07-12,Mitch Bratt,U,3.5,0.0,WIN,,
+2026-07-12,Emmet Sheehan,U,5.5,7.0,LOSS,,
+2026-07-12,Kevin Gausman,O,5.5,8.0,WIN,,
+2026-07-12,Germán Márquez,U,3.5,4.0,LOSS,,
+2026-07-18,Jared Jones,NO LINE,,9.0,NO LINE,,
+2026-07-18,Gavin Williams,NO LINE,,11.0,NO LINE,,
+2026-07-18,Logan Allen,O,1.5,3.0,WIN,,
+2026-07-18,Taj Bradley,O,5.5,6.0,WIN,,
+2026-07-18,Matthew Boyd,U,4.5,4.0,WIN,,
+2026-07-18,Davis Martin,U,3.5,5.0,LOSS,,
+2026-07-18,Shane Bieber,U,4.5,6.0,LOSS,,
+2026-07-18,Rhett Lowder,O,2.5,2.0,LOSS,,
+2026-07-18,Tomoyuki Sugano,U,3.5,3.0,WIN,,
+2026-07-18,Sean Manaea,U,5.5,7.0,LOSS,,
+2026-07-18,Jesús Luzardo,U,6.5,7.0,LOSS,,
+2026-07-18,Trevor Rogers,U,4.5,8.0,LOSS,,
+2026-07-18,Spencer Arrighetti,O,5.5,6.0,WIN,,
+2026-07-18,Griffin Canning,O,3.5,4.0,WIN,,
+2026-07-18,Randy Dobnak,U,2.5,3.0,LOSS,,
+2026-07-18,Dustin May,U,3.5,6.0,LOSS,,
+2026-07-18,Brandon Pfaadt,U,3.5,3.0,WIN,,
+2026-07-18,Ian Seymour,U,5.5,4.0,WIN,,
+2026-07-18,Patrick Sandoval,U,3.5,5.0,LOSS,,
+2026-07-18,MacKenzie Gore,U,5.5,7.0,LOSS,,
+2026-07-18,Owen Murphy,U,3.5,2.0,WIN,,
+2026-07-18,Max Meyer,U,5.5,5.0,WIN,,
+2026-07-18,Shane Drohan,U,4.5,9.0,LOSS,,
+2026-07-18,Logan Webb,U,5.5,5.0,WIN,,
+2026-07-18,Bryan Woo,U,5.5,7.0,LOSS,,
+2026-07-18,Zack Littell,O,2.5,4.0,WIN,,
+2026-07-18,J.T. Ginn,U,4.5,7.0,LOSS,,
+2026-07-18,Tarik Skubal,O,8.5,9.0,WIN,,
+2026-07-18,Grayson Rodriguez,U,5.5,3.0,WIN,,
+2026-07-19,Sean Burke,U,5.5,5.0,WIN,,
+2026-07-19,Trey Yesavage,U,5.5,9.0,LOSS,,
+2026-07-19,Yoshinobu Yamamoto,NO LINE,,7.0,NO LINE,,
+2026-07-19,Cam Schlittler,NO LINE,,8.0,NO LINE,,
+2026-07-19,Shane McClanahan,U,4.5,3.0,WIN,,
+2026-07-19,Sonny Gray,U,4.5,5.0,LOSS,,
+2026-07-19,Nolan McLean,O,6.5,10.0,WIN,,
+2026-07-19,Alan Rangel,U,3.5,4.0,LOSS,,
+2026-07-19,Nathan Eovaldi,U,5.5,2.0,WIN,,
+2026-07-19,Grant Holmes,U,4.5,2.0,WIN,,
+2026-07-19,Paul Skenes,U,6.5,8.0,LOSS,,
+2026-07-19,Joey Cantillo,U,5.5,7.0,LOSS,,
+2026-07-19,Brandon Young,U,4.5,7.0,LOSS,,
+2026-07-19,Hunter Brown,U,6.5,4.0,WIN,,
+2026-07-19,Germán Márquez,U,3.5,2.0,WIN,,
+2026-07-19,Noah Cameron,U,4.5,1.0,WIN,,
+2026-07-19,Eury Pérez,U,6.5,9.0,LOSS,,
+2026-07-19,Robert Gasser,U,4.5,5.0,LOSS,,
+2026-07-19,Zebby Matthews,U,4.5,4.0,WIN,,
+2026-07-19,Shota Imanaga,U,5.5,4.0,WIN,,
+2026-07-19,Hunter Greene,O,6.5,7.0,WIN,,
+2026-07-19,Ryan Feltner,U,4.5,3.0,WIN,,
+2026-07-19,Foster Griffin,U,5.5,2.0,WIN,,
+2026-07-19,Jacob Lopez,U,3.5,6.0,LOSS,,
+2026-07-19,Casey Mize,O,5.5,5.0,LOSS,,
+2026-07-19,Ryan Johnson,U,4.5,5.0,LOSS,,
+2026-07-19,Robbie Ray,U,5.5,6.0,LOSS,,
+2026-07-19,Logan Gilbert,U,6.5,10.0,LOSS,,
+2026-07-19,Andre Pallante,U,3.5,3.0,WIN,,
+2026-07-19,Eduardo Rodriguez,U,3.5,3.0,WIN,,
+2026-07-20,Joe Ryan,O,6.5,3.0,LOSS,,
+2026-07-20,Tanner Bibee,U,4.5,5.0,LOSS,,
+2026-07-20,Braxton Ashcraft,O,6.5,2.0,LOSS,,
+2026-07-20,Ryan Weathers,O,6.5,5.0,LOSS,,
+2026-07-20,Nick Martinez,U,3.5,0.0,WIN,,
+2026-07-20,Dylan Cease,U,7.5,7.0,WIN,,
+2026-07-20,Shane Baz,U,5.5,6.0,LOSS,,
+2026-07-20,Payton Tolle,O,5.5,9.0,WIN,,
+2026-07-20,Emmet Sheehan,NO LINE,,6.0,NO LINE,,
+2026-07-20,Cristopher Sánchez,U,6.5,7.0,LOSS,,
+2026-07-20,JP Sears,U,3.5,3.0,WIN,,
+2026-07-20,Bryce Elder,O,3.5,4.0,WIN,,
+2026-07-20,Trevor McDonald,U,3.5,3.0,WIN,,
+2026-07-20,Michael Wacha,O,4.5,5.0,WIN,,
+2026-07-20,Freddy Peralta,U,5.5,6.0,LOSS,,
+2026-07-20,Jacob Misiorowski,U,8.5,6.0,WIN,,
+2026-07-20,Jack Flaherty,U,5.5,4.0,WIN,,
+2026-07-20,Jameson Taillon,O,4.5,6.0,WIN,,
+2026-07-20,Erick Fedde,U,3.5,6.0,LOSS,,
+2026-07-20,Jacob deGrom,O,6.5,6.0,LOSS,,
+2026-07-20,Janson Junk,U,3.5,3.0,WIN,,
+2026-07-20,Ronel Blanco,O,3.5,8.0,WIN,,
+2026-07-20,Andrew Alvarez,O,3.5,2.0,LOSS,,
+2026-07-20,Kyle Freeland,U,4.5,4.0,WIN,,
+2026-07-20,Jeffrey Springs,U,3.5,2.0,WIN,,
+2026-07-20,Mitch Bratt,U,3.5,4.0,LOSS,,
+2026-07-20,Andrew Abbott,U,4.5,6.0,LOSS,,
+2026-07-20,George Kirby,U,6.5,6.0,WIN,,
+2026-07-20,Kyle Leahy,U,4.5,4.0,WIN,,
+2026-07-20,José Soriano,U,4.5,7.0,LOSS,,
+2026-07-21,Kendry Rojas,O,1.5,2.0,WIN,,
+2026-07-21,Parker Messick,U,5.5,6.0,LOSS,,
+2026-07-21,Justin Wrobleski,U,5.5,7.0,LOSS,,
+2026-07-21,Zack Wheeler,U,6.5,9.0,LOSS,,
+2026-07-21,Drew Rasmussen,U,4.5,5.0,LOSS,,
+2026-07-21,Kevin Gausman,U,5.5,1.0,WIN,,
+2026-07-21,Walker Buehler,U,3.5,3.0,WIN,,
+2026-07-21,Reynaldo López,U,4.5,6.0,LOSS,,
+2026-07-21,Tyler Mahle,U,3.5,4.0,LOSS,,
+2026-07-21,Luinder Avila,U,3.5,7.0,LOSS,,
+2026-07-21,Zac Thornton,U,4.5,2.0,WIN,,
+2026-07-21,Brandon Sproat,U,4.5,4.0,WIN,,
+2026-07-21,Framber Valdez,U,4.5,1.0,WIN,,
+2026-07-21,David Peterson,O,3.5,4.0,WIN,,
+2026-07-21,Noah Schultz,U,4.5,2.0,WIN,,
+2026-07-21,Kumar Rocker,O,4.5,6.0,WIN,,
+2026-07-21,Tyler Phillips,U,3.5,2.0,WIN,,
+2026-07-21,Tatsuya Imai,U,5.5,8.0,LOSS,,
+2026-07-21,Miles Mikolas,U,2.5,1.0,WIN,,
+2026-07-21,Michael Lorenzen,U,3.5,5.0,LOSS,,
+2026-07-21,Matthew Liberatore,U,5.5,7.0,LOSS,,
+2026-07-21,Walbert Ureña,U,4.5,5.0,LOSS,,
+2026-07-21,Jack Perkins,U,4.5,4.0,WIN,,
+2026-07-21,Kohl Drake,O,3.5,5.0,WIN,,
+2026-07-21,Chase Burns,U,6.5,6.0,WIN,,
+2026-07-21,Luis Castillo,U,5.5,3.0,WIN,,
