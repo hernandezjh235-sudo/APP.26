@@ -12641,7 +12641,7 @@ def _pc_pick_side_display(decision_raw, projection=None, line=None, edge=None):
     except Exception:
         return str(decision_raw or '🚫 PASS'), ''
 
-def render_kproj_pitcher_card(p):
+def render_kproj_pitcher_card(p, return_html=False):
     d = kproj_decision(p)
     dist = kproj_distribution_profile(d.get("projection"), d.get("line"), p)
     putaway, put_label = kproj_putaway_value(p)
@@ -13206,9 +13206,11 @@ def render_kproj_pitcher_card(p):
     source = _html.escape(str(_pick(card_row, ["Winning File K Source", "Opponent K% vs Pitcher Hand Source"], card_src))[:54])
     lineup_status = _html.escape(str(_pick(card_row, ["APP97 Lineup Status", "Lineup", "Projection Source"], p.get("lineup_status", "")))[:40])
 
-    st.markdown("""
+    css = """
     <style>
-    .kcard{position:relative;overflow:hidden;background:radial-gradient(circle at 85% 5%,rgba(163,33,255,.30),transparent 34%),radial-gradient(circle at 10% 0%,rgba(245,179,30,.16),transparent 30%),linear-gradient(180deg,#18111f 0%,#07070d 100%);border:1px solid rgba(190,90,255,.45);border-radius:18px;padding:15px;box-shadow:0 16px 40px rgba(0,0,0,.38),0 0 26px rgba(150,38,255,.16);margin:14px 0;color:#f8f7ff}
+    *{box-sizing:border-box}body{margin:0;background:#05040a;color:#f8f7ff;font-family:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+    .kcard-stack{display:grid;grid-template-columns:repeat(auto-fit,minmax(360px,1fr));gap:16px;padding:4px 0 18px}
+    .kcard{position:relative;overflow:hidden;background:radial-gradient(circle at 85% 5%,rgba(163,33,255,.30),transparent 34%),radial-gradient(circle at 10% 0%,rgba(245,179,30,.16),transparent 30%),linear-gradient(180deg,#18111f 0%,#07070d 100%);border:1px solid rgba(190,90,255,.45);border-radius:18px;padding:15px;box-shadow:0 16px 40px rgba(0,0,0,.38),0 0 26px rgba(150,38,255,.16);margin:0;color:#f8f7ff}
     .kcard:before{content:"";position:absolute;inset:0;border-top:1px solid rgba(255,211,76,.48);pointer-events:none}.kc-top{display:grid;grid-template-columns:auto 1fr auto;gap:10px;align-items:center;margin-bottom:12px}
     .kc-logo{width:42px;height:42px;object-fit:contain;background:#11101c;border:1px solid rgba(255,213,74,.26);border-radius:999px;padding:4px;box-shadow:0 0 18px rgba(161,57,255,.2);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:900}
     .kc-name{font-size:21px;font-weight:950;line-height:1.05}.kc-sub{font-size:12px;color:#b5acc6;margin-top:4px}.kc-badge{border:1px solid rgba(255,211,83,.82);background:rgba(255,194,62,.12);border-radius:999px;color:#ffd95e;font-weight:950;font-size:12px;padding:5px 9px;white-space:nowrap}
@@ -13216,11 +13218,11 @@ def render_kproj_pitcher_card(p):
     .kc-arsenal-top{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin-bottom:9px}.kc-arsenal-box{background:rgba(19,17,30,.88);border:1px solid rgba(255,213,74,.18);border-radius:10px;padding:8px;min-width:0;overflow:hidden}.kc-arsenal-box span{display:block;font-size:9px;color:#a99fb8;text-transform:uppercase;font-weight:900}.kc-arsenal-box b{display:block;font-size:16px;margin-top:3px;color:#f9f5ff;line-height:1.12;overflow-wrap:anywhere}.kc-arsenal-box.gold b{color:#ffd34e}.kc-arsenal-box.purp b{color:#d06bff}
     .kc-section{background:rgba(10,12,22,.88);border:1px solid rgba(174,78,255,.22);border-radius:12px;padding:10px;margin-top:10px}.kc-section-title{font-size:12px;color:#f4ecff;font-weight:900;margin-bottom:8px;display:flex;justify-content:space-between;gap:10px}.kc-chip{color:#ffd34e;font-size:11px}.kc-metrics{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:7px;margin:10px 0}.kc-stat{background:rgba(12,14,25,.84);border:1px solid rgba(255,255,255,.09);border-radius:10px;padding:8px;min-width:0;min-height:58px;overflow:hidden}.kc-stat span{display:block;font-size:9px;color:#a99fb8;font-weight:900;text-transform:uppercase;margin-bottom:4px}.kc-stat b{display:block;font-size:14px;line-height:1.12;overflow-wrap:anywhere}
     .kc-lineup,.kc-arsenal{width:100%;border-collapse:collapse;font-size:12px}.kc-lineup th,.kc-arsenal th{color:#a99fb8;text-align:left;font-size:10px;text-transform:uppercase;padding:6px;border-bottom:1px solid #2b233b}.kc-lineup td,.kc-arsenal td{padding:6px;border-bottom:1px solid #1f1a2b;white-space:nowrap}.kc-lineup td:nth-child(2),.kc-arsenal td:first-child{white-space:normal;font-weight:850}.hi,.star{color:#35f071}.lo,.warn{color:#ffd34e}.kc-empty{color:#b8adc8;font-size:12px;line-height:1.4}.kc-note{font-size:12px;color:#cbd3e0;line-height:1.35}.good{color:#42e878}
-    @media(max-width:640px){.kc-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}.kc-arsenal-top{grid-template-columns:repeat(2,minmax(0,1fr))}.kc-proj{font-size:36px}.kc-lineup{font-size:11px}.kc-lineup th:nth-child(6),.kc-lineup td:nth-child(6){display:none}}
+    @media(max-width:640px){.kcard-stack{grid-template-columns:1fr}.kcard{border-radius:16px;padding:12px}.kc-top{grid-template-columns:36px 1fr auto}.kc-logo{width:36px;height:36px}.kc-name{font-size:19px}.kc-sub{font-size:11px}.kc-badge{font-size:10px;padding:4px 7px}.kc-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}.kc-arsenal-top{grid-template-columns:repeat(2,minmax(0,1fr))}.kc-proj{font-size:36px}.kc-side{font-size:18px}.kc-lineup{font-size:11px}.kc-lineup th:nth-child(6),.kc-lineup td:nth-child(6){display:none}}
     </style>
-    """, unsafe_allow_html=True)
+    """
 
-    st.markdown(f"""
+    card_html = f"""
     <div class="kcard">
       <div class="kc-top">
         {logo_html}
@@ -13267,7 +13269,11 @@ def render_kproj_pitcher_card(p):
         <span class="good">{data_gate}</span><br>{note}
       </div>
     </div>
-    """, unsafe_allow_html=True)
+    """
+    if return_html:
+        return css + card_html
+    st.markdown(css + card_html, unsafe_allow_html=True)
+    return card_html
 
 
 def _display_pct_value(v):
@@ -13667,9 +13673,19 @@ def render_kproj_tab(board):
         pass
 
     # IMPORTANT: render every card, not just the top 20.
-    # If the board has 29 pitcher rows, this renders 29 pitcher cards.
-    for p in priority:
-        render_kproj_pitcher_card(p)
+    # Match the current app's responsive pitcher-card board:
+    # desktop side-by-side, mobile stacked, with internal scrolling.
+    try:
+        cards = [render_kproj_pitcher_card(p, return_html=True) for p in priority]
+        html_doc = '<div class="kcard-stack">' + "\n".join(cards) + "</div>"
+        try:
+            import streamlit.components.v1 as components
+            components.html(html_doc, height=max(1000, min(42000, 980 * max(1, len(cards))) + 320), scrolling=True)
+        except Exception:
+            st.markdown(html_doc, unsafe_allow_html=True)
+    except Exception:
+        for p in priority:
+            render_kproj_pitcher_card(p)
 
 
 # =========================
