@@ -12902,7 +12902,7 @@ def render_kproj_pitcher_card(p, return_html=False):
 
 # Current-style K player-card UI override for the OG file.
 # Display only: this does not alter projections, decisions, lines, or copy/paste slates.
-def render_kproj_pitcher_card(p):
+def render_kproj_pitcher_card(p, return_html=False):
     import html as _html
     import math as _math
 
