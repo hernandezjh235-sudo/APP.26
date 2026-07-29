@@ -12900,6 +12900,376 @@ def render_kproj_pitcher_card(p):
         st.caption("No batter-by-batter lineup available yet. The app uses MLB confirmed lineups when posted and MLB projected pre-lineups before lock.")
 
 
+# Current-style K player-card UI override for the OG file.
+# Display only: this does not alter projections, decisions, lines, or copy/paste slates.
+def render_kproj_pitcher_card(p):
+    import html as _html
+    import math as _math
+
+    def _num(v, default=None):
+        try:
+            if v is None or v == "" or str(v).strip() in {"—", "-", "nan", "NaN", "None"}:
+                return default
+            x = float(v)
+            if _math.isnan(x) or _math.isinf(x):
+                return default
+            return x
+        except Exception:
+            try:
+                return safe_float(v, default)
+            except Exception:
+                return default
+
+    def _pick(src, keys, default=""):
+        if not isinstance(src, dict):
+            return default
+        for key in keys:
+            val = src.get(key)
+            if val not in (None, "", "—", "-", "nan", "NaN"):
+                return val
+        return default
+
+    def _fmt(v, digits=1, default="—"):
+        x = _num(v, None)
+        if x is None:
+            return default
+        return f"{x:.{digits}f}"
+
+    def _pct(v, digits=0, default="—"):
+        x = _num(v, None)
+        if x is None:
+            return default
+        if abs(x) <= 1:
+            x *= 100.0
+        return f"{x:.{digits}f}%"
+
+    def _name_key(v):
+        try:
+            return normalize_name(str(v or ""))
+        except Exception:
+            return "".join(ch for ch in str(v or "").lower() if ch.isalnum())
+
+    def _pitch_short(v):
+        txt = str(v or "").strip()
+        low = txt.lower()
+        aliases = {
+            "ff": "Four-seam FB", "fa": "Four-seam FB", "fastball": "Four-seam FB",
+            "4-seam fastball": "Four-seam FB", "four-seam fastball": "Four-seam FB",
+            "four seam fb": "Four-seam FB", "si": "Sinker", "sinker": "Sinker",
+            "sl": "Slider", "slider": "Slider", "st": "Sweeper", "sweeper": "Sweeper",
+            "fc": "Cutter", "ct": "Cutter", "cutter": "Cutter", "ch": "Changeup",
+            "changeup": "Changeup", "cu": "Curveball", "curveball": "Curveball",
+            "kc": "Knuckle Curve", "knuckle curve": "Knuckle Curve",
+            "fs": "Splitter", "splitter": "Splitter", "split-finger": "Splitter",
+        }
+        return aliases.get(low, txt or "Pitch")
+
+    def _team_logo(team):
+        abbr = str(team or "").upper().strip()
+        ids = {
+            "ARI": 109, "ATL": 144, "BAL": 110, "BOS": 111, "CHC": 112, "CWS": 145,
+            "CHW": 145, "CIN": 113, "CLE": 114, "COL": 115, "DET": 116, "HOU": 117,
+            "KC": 118, "KCR": 118, "LAA": 108, "LAD": 119, "MIA": 146, "MIL": 158,
+            "MIN": 142, "NYM": 121, "NYY": 147, "ATH": 133, "OAK": 133, "PHI": 143,
+            "PIT": 134, "SD": 135, "SEA": 136, "SF": 137, "STL": 138, "TB": 139,
+            "TBR": 139, "TEX": 140, "TOR": 141, "WSH": 120, "WAS": 120,
+        }
+        tid = ids.get(abbr)
+        return f"https://www.mlbstatic.com/team-logos/{tid}.svg" if tid else ""
+
+    def _split_matchup(matchup):
+        txt = str(matchup or "").upper().replace(" VS ", " @ ")
+        if "@" in txt:
+            a, h = [x.strip() for x in txt.split("@", 1)]
+            return a, h
+        return "", ""
+
+    def _side_from_decision(decision, proj, line):
+        txt = str(decision or "").upper()
+        if "OVER" in txt:
+            return "OVER"
+        if "UNDER" in txt:
+            return "UNDER"
+        if line is not None and proj is not None:
+            return "OVER" if proj >= line else "UNDER"
+        return "TRACK"
+
+    def _rating_label(conf, decision):
+        c = _num(conf, None)
+        if c is not None and c <= 1:
+            c *= 100.0
+        if c is None:
+            c = 0.0
+        if "🔥" in str(decision) or c >= 78:
+            return f"HIGH {c:.0f}%"
+        if c >= 66:
+            return f"GOOD {c:.0f}%"
+        if c >= 50:
+            return f"TRACK {c:.0f}%"
+        return f"LEAN {c:.0f}%"
+
+    def _pitch_rows():
+        rows = []
+        for r in (p.get("pitch_type_rows") or []):
+            if not isinstance(r, dict):
+                continue
+            pitch = _pitch_short(_pick(r, ["Pitch Type", "pitch_name", "pitch_type", "Pitch"], ""))
+            use = _num(_pick(r, ["Pitcher Usage %", "Usage %", "pitch_usage", "pitch_percent", "usage_percent"], None), None)
+            kval = _num(_pick(r, ["Pitch K%", "K%", "K Rate", "k_percent", "strikeout_percent"], None), None)
+            whiff = _num(_pick(r, ["Pitcher Whiff%", "Avg Batter Whiff%", "Whiff%", "whiff_percent", "Whiff Rate"], None), None)
+            put = _num(_pick(r, ["Putaway", "PutAway", "put_away", "putaway", "put_away_percent"], None), None)
+            if use is not None and abs(use) <= 1:
+                use *= 100.0
+            if kval is not None and abs(kval) <= 1:
+                kval *= 100.0
+            if whiff is not None and abs(whiff) <= 1:
+                whiff *= 100.0
+            if put is not None and abs(put) <= 1:
+                put *= 100.0
+            if pitch and use is not None and use > 0:
+                rows.append({"pitch": pitch, "use": use, "k": kval, "whiff": whiff, "put": put})
+        rows = sorted(rows, key=lambda x: x.get("use") or 0, reverse=True)[:5]
+        return rows
+
+    def _arsenal_table(rows, match_k, match_whiff):
+        if not rows:
+            return """
+            <div class="kc-empty">Pitch arsenal feed not matched yet. Upload pitch mix data to fill real pitch-by-pitch K, whiff, and putaway rows.</div>
+            """
+        trs = []
+        for r in rows:
+            k = _pct(r.get("k"), 0)
+            w = _pct(r.get("whiff"), 0)
+            put = _pct(r.get("put"), 0)
+            cls = "hi" if (_num(r.get("k"), 0) >= 30 or _num(r.get("whiff"), 0) >= 30) else "lo" if _num(r.get("whiff"), 99) <= 18 else ""
+            trs.append(
+                f"<tr><td>{_html.escape(str(r.get('pitch')))}</td><td>{_fmt(r.get('use'),0)}%</td>"
+                f"<td class='{cls}'>K:{k}</td><td class='{cls}'>W:{w}</td><td>{put}</td></tr>"
+            )
+        return "<table class='kc-arsenal'><thead><tr><th>Pitch</th><th>Use</th><th>K%</th><th>Whiff</th><th>Put</th></tr></thead><tbody>" + "".join(trs) + "</tbody></table>"
+
+    def _lineup_rows():
+        rows = []
+        for r in (p.get("lineup_rows") or [])[:9]:
+            if isinstance(r, dict):
+                rows.append(r)
+        return rows
+
+    def _lineup_table(rows):
+        if not rows:
+            return "<div class='kc-empty'>No batter-by-batter lineup available yet. OG logic still uses its existing fallback.</div>"
+        trs = []
+        for i, r in enumerate(rows[:9], start=1):
+            batter = _html.escape(str(_pick(r, ["Batter", "Name", "Player", "player"], "")))
+            hand = _html.escape(str(_pick(r, ["Bat Side", "Bats", "Hand", "Side"], "—")))
+            used = _num(_pick(r, ["K% Used", "Used K%", "K%", "Raw_K_Rate"], None), None)
+            vsh = _num(_pick(r, ["K% vs Hand", "vs Hand", "Vs Hand K%", "K_vs_hand"], used), used)
+            season = _num(_pick(r, ["Season K%", "Season", "K%"], used), used)
+            marker = " star" if used is not None and used >= 25 else " warn" if used is not None and used <= 16 else ""
+            trs.append(
+                f"<tr><td>{i}</td><td class='batter{marker}'>{batter}</td><td>{hand}</td>"
+                f"<td>{_fmt(used,1)}</td><td>{_fmt(vsh,1)}</td><td>{_fmt(season,1)}</td></tr>"
+            )
+        return "<table class='kc-lineup'><thead><tr><th>#</th><th>Batter</th><th>Hand</th><th>K% Used</th><th>Vs Hand</th><th>Season</th></tr></thead><tbody>" + "".join(trs) + "</tbody></table>"
+
+    def _opponent_pitch_arsenal_table(rows, top_pitch):
+        """Show the opponent-vs-top-pitch block only when real matchup fields exist."""
+        if not rows:
+            return ""
+        pitch_label = _pitch_short(top_pitch)
+        table_rows = []
+        real_cells = 0
+        for i, r in enumerate(rows[:9], start=1):
+            if not isinstance(r, dict):
+                continue
+            batter = _html.escape(str(_pick(r, ["Batter", "Name", "Player", "player"], "")))
+            pitch = _pitch_short(_pick(r, ["Top Pitch", "Pitch", "Pitch Type", "pitch_name"], pitch_label))
+            pa = _num(_pick(r, ["PA/USE", "PA", "Pitch PA", "pitch_pa", "PC"], None), None)
+            kval = _num(_pick(r, ["Pitch K%", "K% vs Pitch", "Top Pitch K%", "pitch_k_percent", "K%"], None), None)
+            wh = _num(_pick(r, ["Pitch Whiff%", "Whiff vs Pitch", "Top Pitch Whiff%", "pitch_whiff_percent", "Whiff%"], None), None)
+            woba = _num(_pick(r, ["Pitch wOBA", "wOBA vs Pitch", "Top Pitch wOBA", "pitch_woba", "wOBA"], None), None)
+            if kval is not None and abs(kval) <= 1:
+                kval *= 100.0
+            if wh is not None and abs(wh) <= 1:
+                wh *= 100.0
+            if any(v is not None for v in (pa, kval, wh, woba)):
+                real_cells += 1
+            table_rows.append(
+                f"<tr><td>{i}</td><td>{batter}</td><td>{_html.escape(str(pitch))}</td>"
+                f"<td>{_fmt(pa,0)}</td><td>{_fmt(kval,0)}%</td><td>{_fmt(wh,0)}%</td><td>{_fmt(woba,3)}</td></tr>"
+            )
+        if real_cells <= 0:
+            return ""
+        return (
+            "<div class='kc-section'>"
+            "<div class='kc-section-title'><span>Opponent vs Pitch Arsenal</span>"
+            f"<span class='kc-chip'>Batter vs {_html.escape(str(pitch_label or 'top pitch'))}</span></div>"
+            "<table class='kc-lineup'><thead><tr><th>#</th><th>Batter/Profile</th><th>Pitch</th><th>PA/Use</th><th>K%</th><th>Whiff</th><th>wOBA</th></tr></thead><tbody>"
+            + "".join(table_rows) + "</tbody></table></div>"
+        )
+
+    try:
+        d = kproj_decision(p)
+    except Exception:
+        d = {}
+    card_row = {}
+    try:
+        card_row = official_card_k_row(p) or {}
+    except Exception:
+        card_row = {}
+    try:
+        card_proj, card_src = official_card_k_projection(p)
+    except Exception:
+        card_proj, card_src = d.get("projection", "—"), "OG K Projection"
+
+    line = _num(_pick(card_row, ["UD/Line", "Line", "Underdog Line"], d.get("line")), None)
+    proj = _num(_pick(card_row, ["Matchup Intelligence Final K Projection", "Line-Aware Smart Final K Projection", "K PROJ", "Final K Projection"], card_proj), _num(d.get("projection"), None))
+    decision = _pick(card_row, ["Line-Aware Smart Decision", "Decision", "Model Pick"], d.get("decision", "TRACK"))
+    edge = _num(_pick(card_row, ["Line-Aware Smart Edge", "Official K Edge", "Edge Gap", "Final K Edge"], None), None)
+    if edge is None and line is not None and proj is not None:
+        edge = proj - line
+    conf = _num(_pick(card_row, ["Confidence %", "Official K Hit %", "Hit %"], None), None)
+    if conf is None:
+        conf = _num(d.get("confidence"), 0)
+        if conf is not None and conf <= 1:
+            conf *= 100.0
+
+    pitcher = str(p.get("pitcher") or _pick(card_row, ["Pitcher"], "Pitcher"))
+    matchup = str(p.get("matchup") or _pick(card_row, ["Matchup"], ""))
+    hand = str(p.get("hand") or _pick(card_row, ["Pitcher Hand", "Hand", "Throws"], "")).upper().replace("HP", "")
+    team = str(p.get("team") or _pick(card_row, ["Team", "Pitcher Team"], ""))
+    opp = str(p.get("opponent") or _pick(card_row, ["Opponent", "Opp Team"], ""))
+    if not team or not opp:
+        away, home = _split_matchup(matchup)
+        if not team:
+            team = away
+        if not opp:
+            opp = home if team == away else away
+    logo = _team_logo(team)
+    logo_html = f"<img class='kc-logo' src='{_html.escape(logo)}' />" if logo else f"<div class='kc-logo'>{_html.escape((team or 'MLB')[:3])}</div>"
+
+    side = _side_from_decision(decision, proj, line)
+    side_class = "over" if side == "OVER" else "under" if side == "UNDER" else "track"
+    rating = _rating_label(conf, decision)
+    prob_width = max(8, min(100, conf or 50))
+    line_txt = "—" if line is None else f"{line:.1f}"
+    proj_txt = "—" if proj is None else f"{proj:.2f}"
+    edge_txt = "—" if edge is None else f"{edge:+.2f} vs {line_txt}"
+
+    pitch_rows = _pitch_rows()
+    top = pitch_rows[0] if pitch_rows else {}
+    top_pitch = top.get("pitch") or _pick(card_row, ["APP100 Top Pitch", "Pitch Arsenal Top Pitch Used", "Top Pitch"], "—")
+    top_usage = top.get("use")
+    match_k = _num(_pick(card_row, ["Match K%", "APP100 Match K%", "Pitch Mix Match K%", "APP88 Batter Lineup K%"], None), None)
+    match_whiff = _num(_pick(card_row, ["Opponent Whiff%", "Opp Whiff%", "Savant Custom Whiff%", "Whiff%"], None), None)
+    if match_k is not None and abs(match_k) <= 1:
+        match_k *= 100.0
+    if match_whiff is not None and abs(match_whiff) <= 1:
+        match_whiff *= 100.0
+    arsenal_score = _num(_pick(card_row, ["APP100 Arsenal Score", "APP88 Arsenal Matchup Score", "Pitch Mix Matchup Score"], None), None)
+    if arsenal_score is None:
+        whs = [_num(r.get("whiff"), None) for r in pitch_rows if _num(r.get("whiff"), None) is not None]
+        arsenal_score = max(1, min(99, 45 + ((sum(whs) / len(whs) - 22) * 1.2))) if whs else None
+    arsenal_grade = "A+" if arsenal_score is not None and arsenal_score >= 78 else "A" if arsenal_score is not None and arsenal_score >= 66 else "B" if arsenal_score is not None and arsenal_score >= 54 else "C" if arsenal_score is not None and arsenal_score >= 44 else "D" if arsenal_score is not None else "—"
+    arsenal_signal = "Elite K Arsenal" if arsenal_grade == "A+" else "Positive Arsenal" if arsenal_grade == "A" else "Balanced Arsenal" if arsenal_grade == "B" else "Mixed Arsenal" if arsenal_grade == "C" else "Arsenal Risk"
+    ceiling = _num(_pick(card_row, ["Ceiling", "K Ceiling", "Projected Ceiling"], None), None)
+    if ceiling is None:
+        try:
+            dist = kproj_distribution_profile(proj, line, p)
+            ceiling = _num(dist.get("ceiling"), None)
+        except Exception:
+            ceiling = None
+
+    lineup_rows = _lineup_rows()
+    opponent_arsenal_html = _opponent_pitch_arsenal_table(lineup_rows, top_pitch)
+    lineup_used = [_num(_pick(r, ["K% Used", "Used K%", "K%", "Raw_K_Rate"], None), None) for r in lineup_rows]
+    lineup_used = [x * 100 if x is not None and abs(x) <= 1 else x for x in lineup_used if x is not None]
+    avg_lineup_k = (sum(lineup_used) / len(lineup_used)) if lineup_used else _num(_pick(card_row, ["APP88 Batter Lineup K%", "Opponent K% vs Pitcher Hand"], None), None)
+    high_bats = sum(1 for x in lineup_used if x >= 25)
+    low_bats = sum(1 for x in lineup_used if x <= 16)
+
+    pk = _pct(_pick(card_row, ["APP97 Raw MLB Season Pitcher K%", "APP97 Live Pitcher K%", "Savant Custom K%", "Pitcher K% Used", "Pitcher K%", "Official Savant K%"], p.get("pitcher_k")), 1)
+    ok = _pct(_pick(card_row, ["Opponent K% vs Pitcher Hand", "APP97 Opponent K Environment", "APP88 Batter Lineup K%"], p.get("opp_k")), 1)
+    whiff = _pct(_pick(card_row, ["Savant Custom Whiff%", "Official Savant Whiff%", "Whiff%", "APP85 PutAway Rate"], p.get("whiff_pct")), 1)
+    bf = _fmt(_pick(card_row, ["APP97 Reconciled Expected BF", "Exp BF", "Projected BF"], p.get("expected_bf")), 1)
+    ip = _fmt(_pick(card_row, ["IP Floor", "IP PROJ", "Projected IP", "IP Projection"], p.get("projected_ip")), 2)
+    k9 = _fmt(_pick(card_row, ["APP100 Pitcher K/9", "APP97 Live Pitcher K/9", "Pitcher K/9 Used"], p.get("k9")), 1)
+    bb9 = _fmt(_pick(card_row, ["APP100 Pitcher BB/9", "APP97 Live Pitcher BB/9", "Pitcher BB/9 Used", "Run Damage BB9"], p.get("bb9")), 1)
+    era = _fmt(_pick(card_row, ["APP100 Pitcher ERA", "APP97 Live Pitcher ERA", "Pitcher ERA Used", "ERA"], p.get("era")), 2)
+    fip = _fmt(_pick(card_row, ["APP100 Pitcher FIP", "APP97 Live Pitcher FIP", "Pitcher FIP Used", "FIP", "SIERA"], p.get("fip")), 2)
+    savant = _html.escape(str(_pick(card_row, ["Savant Custom Status", "Official Savant Status"], "SUCCESS"))[:24])
+    quality = _html.escape(str(_pick(card_row, ["APP100 Projection Quality Score", "APP100 Projection Quality"], p.get("elite_upside_score", "—")))[:22])
+    bf_gate = _html.escape(str(_pick(card_row, ["APP100 BF Coverage"], p.get("bf_gate", "")))[:22])
+    skill = _html.escape(str(_pick(card_row, ["APP100 Recent Skill"], p.get("recent_skill_label", "")))[:26])
+    data_gate = _html.escape(str(_pick(card_row, ["Projection Data Gate"], "GREEN - DATA VERIFIED")))
+    note = _html.escape(str(_pick(card_row, ["APP99 Loss Risks", "Projection Data Issues", "APP98 Loss Target Reason", "APP97 K Interaction Label"], "none"))[:220])
+    source = _html.escape(str(_pick(card_row, ["Winning File K Source", "Opponent K% vs Pitcher Hand Source"], card_src))[:54])
+    lineup_status = _html.escape(str(_pick(card_row, ["APP97 Lineup Status", "Lineup", "Projection Source"], p.get("lineup_status", "")))[:40])
+
+    st.markdown("""
+    <style>
+    .kcard{position:relative;overflow:hidden;background:radial-gradient(circle at 85% 5%,rgba(163,33,255,.30),transparent 34%),radial-gradient(circle at 10% 0%,rgba(245,179,30,.16),transparent 30%),linear-gradient(180deg,#18111f 0%,#07070d 100%);border:1px solid rgba(190,90,255,.45);border-radius:18px;padding:15px;box-shadow:0 16px 40px rgba(0,0,0,.38),0 0 26px rgba(150,38,255,.16);margin:14px 0;color:#f8f7ff}
+    .kcard:before{content:"";position:absolute;inset:0;border-top:1px solid rgba(255,211,76,.48);pointer-events:none}.kc-top{display:grid;grid-template-columns:auto 1fr auto;gap:10px;align-items:center;margin-bottom:12px}
+    .kc-logo{width:42px;height:42px;object-fit:contain;background:#11101c;border:1px solid rgba(255,213,74,.26);border-radius:999px;padding:4px;box-shadow:0 0 18px rgba(161,57,255,.2);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:900}
+    .kc-name{font-size:21px;font-weight:950;line-height:1.05}.kc-sub{font-size:12px;color:#b5acc6;margin-top:4px}.kc-badge{border:1px solid rgba(255,211,83,.82);background:rgba(255,194,62,.12);border-radius:999px;color:#ffd95e;font-weight:950;font-size:12px;padding:5px 9px;white-space:nowrap}
+    .kc-main{background:radial-gradient(circle at top right,rgba(171,54,255,.24),transparent 55%),#101323;border:1px solid rgba(255,213,74,.22);border-radius:14px;padding:13px;margin-bottom:10px}.kc-prow{display:grid;grid-template-columns:1fr auto;gap:10px;align-items:end}.kc-label{font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:#929db0;font-weight:900}.kc-proj{font-size:42px;line-height:.95;color:#ff2f73;font-weight:950}.kc-side{text-align:right;font-size:22px;font-weight:950}.kc-side.over{color:#31f063}.kc-side.under{color:#ffd84a}.kc-side.track{color:#b8b2c4}.kc-edge{font-size:12px;color:#e9e0ff;margin-top:6px}.kc-bar{height:5px;background:#231f31;border-radius:999px;overflow:hidden;margin-top:10px}.kc-fill{height:100%;background:linear-gradient(90deg,#2fa7ff,#9b39ff,#ffd43b)}
+    .kc-arsenal-top{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin-bottom:9px}.kc-arsenal-box{background:rgba(19,17,30,.88);border:1px solid rgba(255,213,74,.18);border-radius:10px;padding:8px;min-width:0;overflow:hidden}.kc-arsenal-box span{display:block;font-size:9px;color:#a99fb8;text-transform:uppercase;font-weight:900}.kc-arsenal-box b{display:block;font-size:16px;margin-top:3px;color:#f9f5ff;line-height:1.12;overflow-wrap:anywhere}.kc-arsenal-box.gold b{color:#ffd34e}.kc-arsenal-box.purp b{color:#d06bff}
+    .kc-section{background:rgba(10,12,22,.88);border:1px solid rgba(174,78,255,.22);border-radius:12px;padding:10px;margin-top:10px}.kc-section-title{font-size:12px;color:#f4ecff;font-weight:900;margin-bottom:8px;display:flex;justify-content:space-between;gap:10px}.kc-chip{color:#ffd34e;font-size:11px}.kc-metrics{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:7px;margin:10px 0}.kc-stat{background:rgba(12,14,25,.84);border:1px solid rgba(255,255,255,.09);border-radius:10px;padding:8px;min-width:0;min-height:58px;overflow:hidden}.kc-stat span{display:block;font-size:9px;color:#a99fb8;font-weight:900;text-transform:uppercase;margin-bottom:4px}.kc-stat b{display:block;font-size:14px;line-height:1.12;overflow-wrap:anywhere}
+    .kc-lineup,.kc-arsenal{width:100%;border-collapse:collapse;font-size:12px}.kc-lineup th,.kc-arsenal th{color:#a99fb8;text-align:left;font-size:10px;text-transform:uppercase;padding:6px;border-bottom:1px solid #2b233b}.kc-lineup td,.kc-arsenal td{padding:6px;border-bottom:1px solid #1f1a2b;white-space:nowrap}.kc-lineup td:nth-child(2),.kc-arsenal td:first-child{white-space:normal;font-weight:850}.hi,.star{color:#35f071}.lo,.warn{color:#ffd34e}.kc-empty{color:#b8adc8;font-size:12px;line-height:1.4}.kc-note{font-size:12px;color:#cbd3e0;line-height:1.35}.good{color:#42e878}
+    @media(max-width:640px){.kc-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}.kc-arsenal-top{grid-template-columns:repeat(2,minmax(0,1fr))}.kc-proj{font-size:36px}.kc-lineup{font-size:11px}.kc-lineup th:nth-child(6),.kc-lineup td:nth-child(6){display:none}}
+    </style>
+    """, unsafe_allow_html=True)
+
+    st.markdown(f"""
+    <div class="kcard">
+      <div class="kc-top">
+        {logo_html}
+        <div><div class="kc-name">{_html.escape(pitcher)}</div><div class="kc-sub">{_html.escape(team or '—')} vs {_html.escape(opp or '—')} · {_html.escape(matchup)} · {_html.escape(hand or 'UNK')}HP<br>{source}</div></div>
+        <div class="kc-badge">{_html.escape(rating)}</div>
+      </div>
+      <div class="kc-main">
+        <div class="kc-prow">
+          <div><div class="kc-label">Proj K</div><div class="kc-proj">{proj_txt}</div><div class="kc-edge">{edge_txt}</div></div>
+          <div class="kc-side {side_class}">{_html.escape(side)}<br><span style="font-size:13px;color:#9da6b7">{line_txt} Ks</span></div>
+        </div>
+        <div class="kc-bar"><div class="kc-fill" style="width:{prob_width:.0f}%"></div></div>
+      </div>
+      <div class="kc-section">
+        <div class="kc-arsenal-top">
+          <div class="kc-arsenal-box"><span>K Grade</span><b>{_html.escape(arsenal_grade)}</b></div>
+          <div class="kc-arsenal-box gold"><span>Ceiling</span><b>{'—' if ceiling is None else str(int(round(ceiling))) + 'K'}</b></div>
+          <div class="kc-arsenal-box purp"><span>Top Pitch</span><b>{_html.escape(str(top_pitch))}<br><small>{_fmt(top_usage,0)}% use</small></b></div>
+          <div class="kc-arsenal-box"><span>Arsenal</span><b>{_fmt(arsenal_score,0)}</b></div>
+        </div>
+        <div class="kc-section-title"><span>{_html.escape(arsenal_signal)}</span><span class="kc-chip">Match K {_fmt(match_k,1)}% · Opp Whiff {_fmt(match_whiff,1)}%</span></div>
+        {_arsenal_table(pitch_rows, match_k, match_whiff)}
+      </div>
+      {opponent_arsenal_html}
+      <div class="kc-metrics">
+        <div class="kc-stat"><span>Pitch K%</span><b>{pk}</b></div>
+        <div class="kc-stat"><span>Opp K%</span><b>{ok}</b></div>
+        <div class="kc-stat"><span>Whiff</span><b>{whiff}</b></div>
+        <div class="kc-stat"><span>BF</span><b>{bf}</b></div>
+        <div class="kc-stat"><span>IP</span><b>{ip}</b></div>
+        <div class="kc-stat"><span>Savant</span><b>{savant or '—'}</b></div>
+        <div class="kc-stat"><span>Quality</span><b>{quality}</b></div>
+        <div class="kc-stat"><span>BF Gate</span><b>{bf_gate or '—'}</b></div>
+        <div class="kc-stat"><span>Skill</span><b>{skill or '—'}</b></div>
+        <div class="kc-stat"><span>K/9</span><b>{k9}</b></div>
+        <div class="kc-stat"><span>BB/9</span><b>{bb9}</b></div>
+        <div class="kc-stat"><span>ERA/FIP</span><b>{era}/{fip}</b></div>
+      </div>
+      <div class="kc-section">
+        <div class="kc-section-title"><span>Batter-by-batter K matchup</span><span class="kc-chip">{lineup_status or 'lineup'} · avg {_fmt(avg_lineup_k,1)} · high-K {high_bats} · low-K {low_bats}</span></div>
+        {_lineup_table(lineup_rows)}
+      </div>
+      <div class="kc-section kc-note">
+        <span class="good">{data_gate}</span><br>{note}
+      </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+
 def _display_pct_value(v):
     """Return a readable percentage string for K-rate values.
     Handles either decimal rates (0.2383) or already-percent values (23.83).
