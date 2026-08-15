@@ -775,7 +775,7 @@ except ModuleNotFoundError as _validation_import_error:
             "compatibility_fallback": True,
         }
 
-APP_VERSION = "ONE WAY PICKZ MERGE V2.6.10 + UNDEFEATED BETA SHADOW + SPORTS BRAIN 2026-08-15"
+APP_VERSION = "ONE WAY PICKZ K UPSIDE + UNDEFEATED BETA INTEGRATED + SPORTS BRAIN 2026-08-15"
 FULL_APP_UPDATE_MARKER = "FULL_APP_CANONICAL_K_PIPELINE_2026_07_30"
 MERGE_V269_SAFE_UPDATE_MARKER = "V269_SAFE_SAVANT_ORDER_SHADOW_NO_CONTROL_PROJECTION_CHANGE"
 MERGE_V2610_DATA_HARDENING_MARKER = "V2610_MLBAM_HAND_FAIL_CLOSED_AUX_LAST_GOOD_NO_PRODUCTION_PROMOTION"
@@ -53798,6 +53798,10 @@ def _kclean_render_player_cards(df, board=None, limit=None):
                 _ub_role = html.escape(str(row.get("UB Role") or "UNKNOWN"))
                 _ub_regime = html.escape(str(row.get("UB Regime") or "NORMAL"))
                 _ub_work = html.escape(str(row.get("UB Workload Confidence") or "UNKNOWN"))
+                _ub_hist_flags = html.escape(str(row.get("UB Hist Calibration Flags") or "NONE")[:500])
+                _ub_hist_source = html.escape(str(row.get("UB Hist Calibration Source") or "NONE")[:120])
+                _ub_hist_line = html.escape(str(row.get("UB Hist Line Bucket") or "—"))
+                _ub_hist_penalty = _kclean_fmt(row.get("UB Hist Ranking Penalty"), 1)
                 _ub_play = html.escape(str(row.get("Undefeated Beta Playability") or "TRACK"))
                 _ub_reason = html.escape(str(row.get("Undefeated Beta Decision Reason") or "")[:600])
                 _brain_score = _kclean_fmt(row.get("Sports Brain Score"), 0)
@@ -53835,8 +53839,11 @@ def _kclean_render_player_cards(df, board=None, limit=None):
                       <div><span>Line feasibility</span><b>{_ub_feas}/100</b></div>
                       <div><span>Workload</span><b>{_ub_work}</b></div>
                       <div><span>Role / Regime</span><b>{_ub_role} / {_ub_regime}</b></div>
+                      <div><span>Hist line bucket</span><b>{_ub_hist_line}</b></div>
+                      <div><span>Hist rank penalty</span><b>{_ub_hist_penalty}</b></div>
                     </div>
                     <div class="kc-why">{_ub_reason}</div>
+                    <div class="kc-mini-note"><b>Merge calibration guard:</b> {_ub_hist_flags}<br>Source: {_ub_hist_source}. Historical audit changes ranking/playability only; raw Beta projection adjustment = 0.00 K.</div>
                   </div>
                 </details>
                 <details class="kc-details">
@@ -53917,7 +53924,7 @@ def _kclean_render_player_cards(df, board=None, limit=None):
 def _v265_mobile_package_bytes():
     """Return a mobile-safe package without depending on a developer path."""
     root = Path(__file__).resolve().parent
-    archive_name = "Merge_V2_6_10_MLB_FINAL_MOBILE.zip"
+    archive_name = "Undefeated_Beta_K_Upside_MLB.zip"
     prebuilt = root / archive_name
     if prebuilt.exists() and prebuilt.is_file():
         payload = prebuilt.read_bytes()
@@ -53965,11 +53972,11 @@ def render_v265_download_panel():
         payload, checksum, integrity = _v265_mobile_package_bytes()
         size_mb = len(payload) / (1024.0 * 1024.0)
         build_stamp = datetime.fromtimestamp(Path(__file__).stat().st_mtime).astimezone().strftime("%Y-%m-%d %I:%M %p %Z")
-        with st.expander("CURRENT VERIFIED FILES · Merge V2.6.10 MLB", expanded=False):
+        with st.expander("CURRENT VERIFIED FILES · K Upside / Undefeated Beta", expanded=False):
             st.markdown("### Engine Downloads")
             st.caption("Protected Underdog resolver + first-inning K market + Savant vs-hand shadow + visual K history")
             st.markdown(
-                f"**Merge V2.6.10 MLB** · `CURRENT`  \n"
+                f"**K Upside / Undefeated Beta** · `CURRENT`  \n"
                 f"Package size: **{size_mb:.2f} MB**  \n"
                 f"Archive integrity: **{integrity}**  \n"
                 f"Build: **{build_stamp}**  \n"
@@ -53978,7 +53985,7 @@ def render_v265_download_panel():
             st.download_button(
                 "DOWNLOAD MLB ZIP",
                 data=payload,
-                file_name="Merge_V2_6_10_MLB_FINAL_MOBILE.zip",
+                file_name="Undefeated_Beta_K_Upside_MLB.zip",
                 mime="application/zip",
                 use_container_width=True,
                 disabled=integrity != "PASS",
@@ -53991,9 +53998,22 @@ def render_v265_download_panel():
 def _impl_render_kproj_tab_08(board):
     _v269_start_savant_refresh_if_needed(board)
     st.markdown('<div class="section-title-pro">K Upside Board</div>', unsafe_allow_html=True)
-    st.caption("Copy/paste slate first. Diagnostics stay collapsed below the board.")
+    st.caption("Undefeated Beta is integrated into this K Upside screen. Merge V2 remains preserved and is run separately; this app uses the Beta challenger projection for the visible K Upside slate/cards while retaining Merge control fields for comparison.")
 
     df = build_kproj_table(board)
+    # K UPSIDE / UNDEFEATED BETA UI INTEGRATION:
+    # Replace only this screen's visible projection frame with the Undefeated Beta
+    # challenger frame. This does NOT mutate the protected Merge V2 source/model.
+    # The Beta frame preserves all original card fields/dropdowns and adds Merge
+    # control + Sports Brain context.
+    try:
+        if "_ub_apply_beta_to_k_frame" in globals() and "build_undefeated_beta_table" in globals():
+            _ub_k_upside_beta = build_undefeated_beta_table(board)
+            _ub_k_upside_df = _ub_apply_beta_to_k_frame(df, _ub_k_upside_beta)
+            if isinstance(_ub_k_upside_df, pd.DataFrame) and not _ub_k_upside_df.empty:
+                df = _ub_k_upside_df
+    except Exception as _ub_ui_e:
+        st.info(f"Undefeated Beta K Upside overlay unavailable; showing base K Upside frame: {_ub_ui_e}")
     if df is None or not isinstance(df, pd.DataFrame) or df.empty:
         st.info("No K projection rows loaded yet. Refresh or load today's pitcher props, then the copy/paste slate will appear here.")
         return
@@ -61307,8 +61327,8 @@ if render_batter_fs_tab is None:
 # Shadow challenger layered on the protected Merge V2.6.10 canonical control.
 # This block never mutates the Merge control table/board in place.
 # =============================================================================
-UNDEFEATED_BETA_VERSION = "UNDEFEATED_BETA_V1_2026_08_15"
-SPORTS_ANALYSIS_BRAIN_VERSION = "SPORTS_ANALYSIS_BRAIN_V1_2026_08_15"
+UNDEFEATED_BETA_VERSION = "UNDEFEATED_BETA_V1_1_CALIBRATION_GUARDS_2026_08_15"
+SPORTS_ANALYSIS_BRAIN_VERSION = "SPORTS_ANALYSIS_BRAIN_V1_1_CALIBRATION_GUARDS_2026_08_15"
 UNDEFEATED_BETA_MODE = "SHADOW_CHALLENGER_NO_MERGE_PROMOTION"
 UB_BASELINE_CONTROL_VERSION = "MERGE_V2_6_10_PROTECTED_CONTROL"
 UB_DATA_DIR = os.path.join(STORAGE_DIR, "learning_data")
@@ -61335,7 +61355,251 @@ UB_CONFIG = {
     "elite_escape_score": 85.0,
     "min_reliable_lineup_hitters": 5,
     "split_shrink_pa": 40.0,
+    # Merge V2 historical calibration is decision/ranking evidence ONLY.
+    # It must never move the biological Undefeated Beta K center.
+    "hist_min_side_sample": 100,
+    "hist_min_line_sample": 60,
+    "hist_over_bias_error_trigger": -0.75,
+    "hist_55_mae_trigger": 1.65,
+    "hist_55_winrate_trigger": 54.0,
+    "hist_35_under_error_trigger": 0.50,
+    "hist_false_over_prob_cap": 0.64,
+    "hist_55_over_prob_cap": 0.63,
+    "hist_35_breakout_under_prob_cap": 0.60,
 }
+
+
+# ---------------------------------------------------------------------------
+# MERGE V2 CALIBRATION AUDIT -> UNDEFEATED BETA READ-ONLY GUARDRAILS
+# ---------------------------------------------------------------------------
+# This seed is the user-supplied Merge V2 calibration audit (392 graded rows).
+# It is intentionally aggregate-only and NEVER changes Undefeated Beta's raw
+# projection, BF center, K/BF center, or matchup math. If a fresher audit CSV
+# exists in persistent storage, it overrides this seed automatically.
+UB_MERGE_CALIBRATION_SEED_VERSION = "MERGE_V2_AUDIT_392_ROWS_2026_08_15"
+UB_MERGE_CALIBRATION_SEED = {
+    "Side": {
+        "OVER": {"plays": 149, "win_rate": 57.7, "avg_error": -1.23, "mae": 1.60, "missed_by_one": 21.5},
+        "UNDER": {"plays": 243, "win_rate": 55.6, "avg_error": 0.33, "mae": 1.47, "missed_by_one": 18.9},
+    },
+    "Line Bucket": {
+        "3.5": {"plays": 82, "win_rate": 59.8, "avg_error": 0.70, "mae": 2.00, "missed_by_one": 17.1},
+        "4.5": {"plays": 142, "win_rate": 54.9, "avg_error": 0.01, "mae": 1.31, "missed_by_one": 23.2},
+        "5.5": {"plays": 97, "win_rate": 51.5, "avg_error": -0.12, "mae": 1.84, "missed_by_one": 17.5},
+        "6.5+": {"plays": 54, "win_rate": 61.1, "avg_error": None, "mae": None, "missed_by_one": 14.8},
+        "2.5": {"plays": 11, "win_rate": 63.6, "avg_error": -0.11, "mae": 0.11, "missed_by_one": 36.4},
+        "1.5": {"plays": 5, "win_rate": 60.0, "avg_error": -1.13, "mae": 1.13, "missed_by_one": 40.0},
+        "0.5": {"plays": 1, "win_rate": 100.0, "avg_error": None, "mae": None, "missed_by_one": 0.0},
+    },
+}
+
+def _ub_calibration_file_candidates():
+    candidates = []
+    try:
+        if "PROJECTION_ERROR_CALIBRATION_FILE" in globals():
+            candidates.append(Path(globals().get("PROJECTION_ERROR_CALIBRATION_FILE")))
+    except Exception:
+        pass
+    try:
+        candidates.append(Path(STORAGE_DIR) / "projection_error_calibration_summary.csv")
+    except Exception:
+        pass
+    try:
+        candidates.append(Path(__file__).resolve().parent / "projection_error_calibration_summary.csv")
+    except Exception:
+        pass
+    out, seen = [], set()
+    for pth in candidates:
+        try:
+            key = str(pth.resolve())
+        except Exception:
+            key = str(pth)
+        if key not in seen:
+            out.append(pth)
+            seen.add(key)
+    return out
+
+def _ub_parse_calibration_csv(path):
+    try:
+        frame = pd.read_csv(path)
+    except Exception:
+        return None
+    if frame is None or frame.empty or "Calibration View" not in frame.columns:
+        return None
+    parsed = {"Side": {}, "Line Bucket": {}}
+    for _, sr in frame.iterrows():
+        row = sr.to_dict()
+        view = str(row.get("Calibration View") or "").strip()
+        if view not in parsed:
+            continue
+        key_col = "Side" if view == "Side" else "Line Bucket"
+        key = row.get(key_col)
+        if key is None or (isinstance(key, float) and np.isnan(key)):
+            continue
+        key = str(key).strip().upper() if view == "Side" else str(key).strip()
+        plays = _ub_num(row.get("Plays"), None)
+        parsed[view][key] = {
+            "plays": 0 if plays is None else int(round(plays)),
+            "win_rate": _ub_num(row.get("Win_Rate_Pct"), None),
+            "avg_error": _ub_num(row.get("Avg_Projection_Error"), None),
+            "mae": _ub_num(row.get("Avg_Abs_Error"), None),
+            "missed_by_one": _ub_num(row.get("Missed_By_One_Pct"), None),
+        }
+    return parsed if parsed.get("Side") or parsed.get("Line Bucket") else None
+
+_UB_CALIBRATION_CACHE = {"key": None, "payload": None}
+
+def _ub_load_merge_calibration_summary():
+    """Load freshest available Merge V2 aggregate audit; fallback to frozen seed."""
+    for path in _ub_calibration_file_candidates():
+        try:
+            if not path.exists() or not path.is_file():
+                continue
+            stamp = f"{path}:{path.stat().st_mtime_ns}:{path.stat().st_size}"
+            if _UB_CALIBRATION_CACHE.get("key") == stamp and _UB_CALIBRATION_CACHE.get("payload"):
+                return _UB_CALIBRATION_CACHE["payload"]
+            parsed = _ub_parse_calibration_csv(path)
+            if parsed:
+                payload = {
+                    "source": "LIVE_MERGE_V2_CALIBRATION_CSV",
+                    "source_path": str(path),
+                    "loaded_at": now_iso() if "now_iso" in globals() else datetime.now().isoformat(),
+                    "tables": parsed,
+                }
+                _UB_CALIBRATION_CACHE.update({"key": stamp, "payload": payload})
+                return payload
+        except Exception:
+            continue
+    payload = {
+        "source": UB_MERGE_CALIBRATION_SEED_VERSION,
+        "source_path": "embedded aggregate seed",
+        "loaded_at": now_iso() if "now_iso" in globals() else datetime.now().isoformat(),
+        "tables": UB_MERGE_CALIBRATION_SEED,
+    }
+    _UB_CALIBRATION_CACHE.update({"key": UB_MERGE_CALIBRATION_SEED_VERSION, "payload": payload})
+    return payload
+
+def _ub_hist_line_bucket(line):
+    line = _ub_num(line, None)
+    if line is None:
+        return None
+    if line >= 6.5:
+        return "6.5+"
+    return f"{line:.1f}"
+
+def _ub_hist_record(summary, view, key):
+    try:
+        return dict(((summary or {}).get("tables") or {}).get(view, {}).get(key, {}) or {})
+    except Exception:
+        return {}
+
+def _ub_historical_calibration_profile(line, side, fixed, recent, workload, false_over, feasibility):
+    """Decision/ranking guardrails only; NEVER changes raw Beta projection."""
+    summary = _ub_load_merge_calibration_summary()
+    side = str(side or "").upper()
+    line_bucket = _ub_hist_line_bucket(line)
+    side_rec = _ub_hist_record(summary, "Side", side)
+    line_rec = _ub_hist_record(summary, "Line Bucket", line_bucket)
+
+    side_plays = int(_ub_num(side_rec.get("plays"), 0) or 0)
+    line_plays = int(_ub_num(line_rec.get("plays"), 0) or 0)
+    side_error = _ub_num(side_rec.get("avg_error"), None)
+    line_error = _ub_num(line_rec.get("avg_error"), None)
+    line_mae = _ub_num(line_rec.get("mae"), None)
+    line_wr = _ub_num(line_rec.get("win_rate"), None)
+
+    conversion = _ub_num((false_over.get("conversion") or {}).get("score"), 50.0)
+    false_over_score = _ub_num(false_over.get("score"), 0.0)
+    escape = _ub_num((fixed.get("escape") or {}).get("score"), 0.0)
+    recent_score = _ub_num(recent.get("score"), 50.0)
+    workload_escape = _ub_num(workload.get("workload_escape_score"), 0.0)
+    feasibility_score = _ub_num(feasibility.get("score"), 50.0)
+    skill = _ub_num(fixed.get("skill_kbf"), LEAGUE_AVG_K)
+
+    strong_over_signals = 0
+    if conversion >= 55: strong_over_signals += 1
+    if escape >= 70: strong_over_signals += 1
+    if recent_score >= 65: strong_over_signals += 1
+    if workload.get("confidence") == "HIGH" and _ub_num(workload.get("bf_p50"), 0) >= 20.5: strong_over_signals += 1
+    if feasibility_score >= 58: strong_over_signals += 1
+    strong_over_exception = bool(side == "OVER" and strong_over_signals >= 3 and false_over_score < 45)
+
+    over_bias = bool(
+        side == "OVER"
+        and side_plays >= int(UB_CONFIG["hist_min_side_sample"])
+        and side_error is not None
+        and side_error <= float(UB_CONFIG["hist_over_bias_error_trigger"])
+    )
+    false_over_guard = bool(over_bias and not strong_over_exception and (false_over_score >= 45 or conversion < 50))
+
+    line_55_difficulty = bool(
+        side == "OVER"
+        and line_bucket == "5.5"
+        and line_plays >= int(UB_CONFIG["hist_min_line_sample"])
+        and ((line_mae is not None and line_mae >= float(UB_CONFIG["hist_55_mae_trigger"]))
+             or (line_wr is not None and line_wr < float(UB_CONFIG["hist_55_winrate_trigger"])))
+    )
+
+    breakout_under_signals = 0
+    if escape >= 65: breakout_under_signals += 1
+    if recent_score >= 65: breakout_under_signals += 1
+    if workload_escape >= 65: breakout_under_signals += 1
+    if skill >= 0.24: breakout_under_signals += 1
+    breakout_under_risk = bool(
+        side == "UNDER"
+        and line_bucket == "3.5"
+        and line_plays >= int(UB_CONFIG["hist_min_line_sample"])
+        and line_error is not None
+        and line_error >= float(UB_CONFIG["hist_35_under_error_trigger"])
+        and breakout_under_signals >= 2
+    )
+
+    control_45 = bool(
+        line_bucket == "4.5" and line_plays >= 100
+        and line_error is not None and abs(line_error) <= 0.15
+    )
+
+    flags, penalty, probability_cap = [], 0.0, None
+    if false_over_guard:
+        flags.append("HISTORICAL_FALSE_OVER_GUARD")
+        penalty += 6.0
+        probability_cap = float(UB_CONFIG["hist_false_over_prob_cap"])
+    if line_55_difficulty and not strong_over_exception:
+        flags.append("HISTORICAL_5_5_OVER_DIFFICULTY")
+        penalty += 5.0
+        cap = float(UB_CONFIG["hist_55_over_prob_cap"])
+        probability_cap = cap if probability_cap is None else min(probability_cap, cap)
+    if breakout_under_risk:
+        flags.append("HISTORICAL_3_5_BREAKOUT_UNDER_RISK")
+        penalty += 7.0
+        cap = float(UB_CONFIG["hist_35_breakout_under_prob_cap"])
+        probability_cap = cap if probability_cap is None else min(probability_cap, cap)
+    if control_45:
+        flags.append("HISTORICAL_4_5_CONTROL_NO_BLANKET_ADJUSTMENT")
+
+    return {
+        "source": summary.get("source"), "source_path": summary.get("source_path"),
+        "line_bucket": line_bucket,
+        "side_plays": side_plays, "side_win_rate": _ub_num(side_rec.get("win_rate"), None),
+        "side_avg_error": side_error, "side_mae": _ub_num(side_rec.get("mae"), None),
+        "line_plays": line_plays, "line_win_rate": line_wr, "line_avg_error": line_error, "line_mae": line_mae,
+        "false_over_guard": false_over_guard, "line_55_difficulty": line_55_difficulty,
+        "strong_over_exception": strong_over_exception, "strong_over_signal_count": strong_over_signals,
+        "breakout_under_risk": breakout_under_risk, "breakout_under_signal_count": breakout_under_signals,
+        "control_45": control_45, "ranking_penalty": round(penalty, 1),
+        "probability_cap": probability_cap, "flags": flags,
+        "projection_adjustment_k": 0.0, "projection_untouched": True,
+    }
+
+def _ub_opportunity_score(workload, lineup):
+    bf50 = _ub_num((workload or {}).get("bf_p50"), DEFAULT_BF)
+    lineup_rate = _ub_num((lineup or {}).get("exposure_rate"), LEAGUE_AVG_K)
+    if lineup_rate is not None and lineup_rate > 1.0:
+        lineup_rate /= 100.0
+    bf_component = float(clamp(50.0 + (bf50 - 21.0) * 4.0, 0.0, 100.0))
+    opp_component = float(clamp(50.0 + (lineup_rate - LEAGUE_AVG_K) * 180.0, 0.0, 100.0))
+    conf_bonus = 6.0 if (workload or {}).get("confidence") == "HIGH" else 0.0
+    return round(float(clamp(0.55 * bf_component + 0.45 * opp_component + conf_bonus, 0.0, 100.0)), 1)
 
 
 def _ub_num(value, default=None):
@@ -61945,7 +62209,7 @@ def _ub_data_quality(p, row, lineup, workload, regime):
     return float(clamp(score, 0.0, 100.0))
 
 
-def _ub_probability_bundle(projection, line, p, row, data_quality, workload, regime, false_over, edge):
+def _ub_probability_bundle(projection, line, p, row, data_quality, workload, regime, false_over, edge, historical=None):
     history = p.get("k_history_context_v256") if isinstance(p.get("k_history_context_v256"), dict) else {}
     hist_std = _ub_num(history.get("k_standard_deviation"), None)
     dist = _v265_exact_line_distribution(projection, line, history_std=hist_std)
@@ -61955,13 +62219,23 @@ def _ub_probability_bundle(projection, line, p, row, data_quality, workload, reg
     raw = over if side == "OVER" else under if side == "UNDER" else 0.5
     if raw is None:
         raw = 0.5
-    # Calibrate toward 50% when the baseball evidence is incomplete/unstable.
+
+    # Calibrate toward 50% when baseball evidence is incomplete/unstable.
     trust = 1.0
     if data_quality < 80: trust *= 0.88
     if data_quality < 65: trust *= 0.80
     if workload.get("confidence") == "LOW": trust *= 0.78
     if regime.get("state") != "NORMAL" and regime.get("confidence") != "HIGH": trust *= 0.86
     if _ub_lineup_stage(p, row) == "CACHED": trust *= 0.85
+
+    historical = historical or {}
+    # Historical audit NEVER moves the raw biological projection. It only makes
+    # weak historical profiles less confident after the projection exists.
+    if historical.get("false_over_guard") and side == "OVER":
+        trust *= 0.92
+    if historical.get("breakout_under_risk") and side == "UNDER":
+        trust *= 0.94
+
     calibrated = 0.5 + (raw - 0.5) * trust
     cap_reasons = []
     cap = 0.90
@@ -61978,8 +62252,22 @@ def _ub_probability_bundle(projection, line, p, row, data_quality, workload, reg
         cap = min(cap, 0.58); cap_reasons.append("THIN_EDGE_CAP")
     if false_over.get("status") == "VETO" and side == "OVER":
         cap = min(cap, 0.60); cap_reasons.append("FALSE_OVER_CAP")
+
+    hist_cap = _ub_num(historical.get("probability_cap"), None)
+    if hist_cap is not None:
+        cap = min(cap, hist_cap)
+        for flag in historical.get("flags") or []:
+            if "CONTROL_NO_BLANKET" not in str(flag):
+                cap_reasons.append(f"{flag}_CAP")
+
     calibrated = min(calibrated, cap)
-    return {"distribution": dist, "side": side, "raw": float(raw), "calibrated": float(clamp(calibrated, 0.01, 0.99)), "cap_reasons": cap_reasons}
+    return {
+        "distribution": dist, "side": side, "raw": float(raw),
+        "calibrated": float(clamp(calibrated, 0.01, 0.99)),
+        "cap_reasons": list(dict.fromkeys(cap_reasons)),
+        "historical_guardrail_applied": bool(hist_cap is not None),
+    }
+
 
 
 def _ub_upstream_hard_pass(p, row):
@@ -61998,14 +62286,17 @@ def _ub_upstream_hard_pass(p, row):
     return reasons
 
 
-def _ub_decision(p, row, projection, line, probability, fixed, recent, workload, regime, false_over, feasibility):
+def _ub_decision(p, row, projection, line, probability, fixed, recent, workload, regime, false_over, feasibility, historical=None):
     if line is None:
         return {"research_side": "NO LINE", "playability": "NO_LINE", "state": "NO_LINE", "reason": "No real sportsbook line."}
     research_side = probability.get("side")
     calibrated = probability.get("calibrated", 0.5)
     edge = projection - line
+    historical = historical or {}
+
     hard = _ub_upstream_hard_pass(p, row)
     reasons = []
+    soft_downgrades = []
     if hard:
         reasons.extend(hard[:3])
     if workload.get("role") in {"OPENER", "RELIEVER", "LIMITED_STARTER"} and feasibility.get("status") in {"THIN", "POOR"}:
@@ -62019,6 +62310,20 @@ def _ub_decision(p, row, projection, line, probability, fixed, recent, workload,
     if _ub_lineup_stage(p, row) == "CACHED" and abs(edge) < 0.40:
         reasons.append("STALE_CACHED_LINEUP")
 
+    # Merge V2 historical audit guardrails. These can PASS/downgrade a betting
+    # recommendation, but they never alter projection, BF, or K/BF.
+    if research_side == "OVER" and historical.get("false_over_guard"):
+        reasons.append("HISTORICAL_FALSE_OVER_GUARD")
+    if research_side == "OVER" and historical.get("line_55_difficulty") and not historical.get("strong_over_exception"):
+        soft_downgrades.append("HISTORICAL_5_5_OVER_DIFFICULTY")
+    if research_side == "UNDER" and historical.get("breakout_under_risk"):
+        # Require at least two independent breakout families before blocking the
+        # Under, protecting ordinary successful 3.5 Unders.
+        if int(historical.get("breakout_under_signal_count") or 0) >= 2:
+            reasons.append("HISTORICAL_3_5_BREAKOUT_UNDER_RISK")
+        else:
+            soft_downgrades.append("HISTORICAL_3_5_UNDER_CAUTION")
+
     if reasons:
         playability = "PASS"
     elif calibrated >= 0.62 and abs(edge) >= 0.45:
@@ -62027,8 +62332,23 @@ def _ub_decision(p, row, projection, line, probability, fixed, recent, workload,
         playability = "LEAN"
     else:
         playability = "TRACK"
+
+    # 5.5 OVER difficulty is deliberately a one-level downgrade rather than a
+    # blanket PASS so strong existing winners are less likely to be destroyed.
+    if soft_downgrades:
+        if playability == "OFFICIAL_PLAY":
+            playability = "LEAN"
+        elif playability == "LEAN":
+            playability = "TRACK"
+
     state = f"{playability}_{research_side}" if research_side in {"OVER", "UNDER"} else playability
-    return {"research_side": research_side, "playability": playability, "state": state, "reason": "; ".join(reasons) if reasons else "Baseball evidence and calibrated line feasibility aligned."}
+    reason_parts = reasons + soft_downgrades
+    return {
+        "research_side": research_side, "playability": playability, "state": state,
+        "reason": "; ".join(reason_parts) if reason_parts else "Baseball evidence and calibrated line feasibility aligned.",
+        "historical_guardrails": "; ".join(historical.get("flags") or []) or "NONE",
+    }
+
 
 
 def _brain_profile(p, row, ub):
@@ -62047,6 +62367,12 @@ def _brain_profile(p, row, ub):
     feasibility = _ub_num(ub.get("UB Line Feasibility Score"), 50.0)
     role = str(ub.get("UB Role") or "UNKNOWN")
     stage = str(ub.get("UB Lineup Stage") or "EXPECTED")
+    hist_penalty = _ub_num(ub.get("UB Hist Ranking Penalty"), 0.0)
+    hist_false_over = bool(ub.get("UB Hist False Over Guard"))
+    hist_55 = bool(ub.get("UB Hist 5.5 Over Difficulty"))
+    hist_35 = bool(ub.get("UB Hist 3.5 Breakout Under Risk"))
+    hist_exception = bool(ub.get("UB Hist Strong Over Exception"))
+    hist_control = bool(ub.get("UB Hist 4.5 Control Bucket"))
 
     family_scores["PITCHER_SKILL"] = float(clamp(50 + (skill - LEAGUE_AVG_K) * 180, 0, 100))
     family_scores["OPPONENT_K"] = float(clamp(50 + (lineup - LEAGUE_AVG_K) * 170, 0, 100))
@@ -62081,6 +62407,12 @@ def _brain_profile(p, row, ub):
         if escape >= 70: support.append("multi-signal suppression escape")
         if false_over >= 65: risks.append("OPPORTUNITY WITHOUT CONVERSION / false-OVER risk")
         if feasibility < 50: risks.append("required K/BF is difficult at likely workload")
+        if hist_false_over:
+            risks.append("Merge history: OVER bias + weak conversion profile")
+        if hist_55 and not hist_exception:
+            risks.append("Merge history: 5.5 OVER requires stronger evidence")
+        if hist_exception:
+            support.append("historical OVER caution cleared by 3+ independent support families")
     elif side == "UNDER":
         if skill <= 0.215: support.append(f"modest pitcher K skill {skill*100:.1f}%")
         if lineup < LEAGUE_AVG_K: support.append(f"contact-oriented lineup {lineup*100:.1f}%")
@@ -62088,6 +62420,12 @@ def _brain_profile(p, row, ub):
         if escape >= 70 or recent >= 70: risks.append("BREAKOUT UNDER RISK")
         if _ub_num(ub.get("UB Workload Escape Score"), 0.0) >= 65: risks.append("P75/P90 workload upside")
         if feasibility >= 70: support.append("line is difficult to clear at central K/BF")
+        if hist_35:
+            risks.append("Merge history: 3.5 Under breakout-risk pattern")
+    if hist_control:
+        # 4.5 was historically almost perfectly centered; it is a neutral control
+        # and gets no boost or penalty.
+        family_scores["HISTORICAL_CONTROL_4_5"] = 50.0
 
     if workload_conf == "HIGH": support.append("stable workload evidence")
     elif workload_conf == "LOW": risks.append("low workload confidence")
@@ -62121,20 +62459,43 @@ def _brain_profile(p, row, ub):
         directional = [
             100.0 - family_scores["PITCHER_SKILL"], 100.0 - family_scores["OPPONENT_K"],
             100.0 - min(80.0, family_scores["RECENT_STUFF"]), family_scores["WORKLOAD"],
-            100.0 - family_scores["LINE_FEASIBILITY"], family_scores["DATA_QUALITY"], family_scores["ROLE"], family_scores["MODEL_AGREEMENT"],
+            100.0 - family_scores["LINE_FEASIBILITY"], family_scores["DATA_QUALITY"],
+            family_scores["ROLE"], family_scores["MODEL_AGREEMENT"],
         ]
         score = float(np.mean(directional))
         score -= max(0.0, escape - 55.0) * 0.18
     score = float(clamp(score, 0, 100))
-    best_play = score
+
     ub_prob = _ub_num(ub.get("UB Calibrated Clear Probability %"), 50.0)
     edge = abs(_ub_num(ub.get("Undefeated Beta Edge"), 0.0))
-    best_play = 0.42 * score + 0.28 * ub_prob + 0.15 * float(clamp(edge / 1.25 * 100, 0, 100)) + 0.15 * data_quality
-    if str(ub.get("Undefeated Beta Playability")) == "PASS": best_play -= 18
-    if risks: best_play -= min(14.0, len(risks) * 2.5)
+    best_play = (
+        0.42 * score
+        + 0.28 * ub_prob
+        + 0.15 * float(clamp(edge / 1.25 * 100, 0, 100))
+        + 0.15 * data_quality
+    )
+    if str(ub.get("Undefeated Beta Playability")) == "PASS":
+        best_play -= 18
+    if risks:
+        best_play -= min(14.0, len(risks) * 2.5)
+    # Historical calibration only affects ranking/playability, never the K center.
+    best_play -= hist_penalty
     best_play = float(clamp(best_play, 0, 100))
-    tier = "S" if best_play >= 82 and str(ub.get("Undefeated Beta Playability")) == "OFFICIAL_PLAY" else "A" if best_play >= 72 and str(ub.get("Undefeated Beta Playability")) in {"OFFICIAL_PLAY", "LEAN"} else "B" if best_play >= 60 else "PASS"
-    verdict = "ELITE SUPPORT" if score >= 84 and tier == "S" else "STRONG SUPPORT" if score >= 74 and tier in {"S", "A"} else "SUPPORTED" if score >= 64 and tier != "PASS" else "CONFLICT" if len(risks) >= len(support) + 2 else "MIXED" if tier != "PASS" else "PASS"
+
+    tier = (
+        "S" if best_play >= 82 and str(ub.get("Undefeated Beta Playability")) == "OFFICIAL_PLAY"
+        else "A" if best_play >= 72 and str(ub.get("Undefeated Beta Playability")) in {"OFFICIAL_PLAY", "LEAN"}
+        else "B" if best_play >= 60
+        else "PASS"
+    )
+    verdict = (
+        "ELITE SUPPORT" if score >= 84 and tier == "S"
+        else "STRONG SUPPORT" if score >= 74 and tier in {"S", "A"}
+        else "SUPPORTED" if score >= 64 and tier != "PASS"
+        else "CONFLICT" if len(risks) >= len(support) + 2
+        else "MIXED" if tier != "PASS"
+        else "PASS"
+    )
     brain_side = side if verdict not in {"CONFLICT", "PASS"} else "PASS"
     research = {
         "version": SPORTS_ANALYSIS_BRAIN_VERSION,
@@ -62147,17 +62508,27 @@ def _brain_profile(p, row, ub):
         "line_feasibility": {"score": family_scores.get("LINE_FEASIBILITY"), "source": "REQUIRED K/BF AFTER BIOLOGICAL PROJECTION"},
         "data_quality": {"score": family_scores.get("DATA_QUALITY"), "source": "MERGE DATA GATES + LINEUP FRESHNESS"},
         "model_agreement": {"score": family_scores.get("MODEL_AGREEMENT"), "source": "MERGE + PO SAME-LINE ONLY"},
+        "historical_calibration": {
+            "source": ub.get("UB Hist Calibration Source"),
+            "flags": ub.get("UB Hist Calibration Flags"),
+            "ranking_penalty": hist_penalty,
+            "projection_adjustment_k": 0.0,
+        },
         "lineup_freshness": _ub_first([p, row], ["lineup_freshness_status", "Lineup Freshness", "official_lineup_timestamp", "lineup_last_refresh"], "UNKNOWN"),
-        "support": support[:6], "risks": risks[:6],
+        "support": support[:8], "risks": risks[:8],
     }
     return {
-        "Sports Brain Side": brain_side, "Sports Brain Score": round(score, 1), "Best Play Score": round(best_play, 1),
-        "Best Play Tier": tier, "Sports Brain Verdict": verdict,
-        "Brain Independent Support Count": len(set(support)), "Brain Independent Risk Count": len(set(risks)),
+        "Sports Brain Side": brain_side, "Sports Brain Score": round(score, 1),
+        "Best Play Score": round(best_play, 1), "Best Play Tier": tier,
+        "Sports Brain Verdict": verdict,
+        "Brain Independent Support Count": len(set(support)),
+        "Brain Independent Risk Count": len(set(risks)),
         "Brain Main Support": "; ".join(support[:3]) if support else "No strong independent support.",
         "Brain Main Risk": "; ".join(risks[:3]) if risks else "No major structural risk detected.",
-        "Brain Research JSON": _ub_json(research), "Sports Brain Version": SPORTS_ANALYSIS_BRAIN_VERSION,
+        "Brain Research JSON": _ub_json(research),
+        "Sports Brain Version": SPORTS_ANALYSIS_BRAIN_VERSION,
     }
+
 
 
 def _ub_build_row(row, p):
@@ -62197,8 +62568,17 @@ def _ub_build_row(row, p):
     false_over = _ub_false_over_profile(p, row, fixed, recent, workload, line, projection)
     feasibility = _ub_line_feasibility(line, workload, fixed.get("skill_kbf", LEAGUE_AVG_K))
     data_quality = _ub_data_quality(p, row, fixed.get("lineup", {}), workload, regime)
-    probability = {"side": "NO LINE", "raw": 0.5, "calibrated": 0.5, "distribution": {}, "cap_reasons": []} if line is None else _ub_probability_bundle(projection, line, p, row, data_quality, workload, regime, false_over, edge)
-    decision = _ub_decision(p, row, projection, line, probability, fixed, recent, workload, regime, false_over, feasibility)
+    pre_hist_side = "NO LINE" if line is None else ("OVER" if projection > line else "UNDER" if projection < line else "PUSH")
+    historical = _ub_historical_calibration_profile(line, pre_hist_side, fixed, recent, workload, false_over, feasibility)
+    probability = (
+        {"side": "NO LINE", "raw": 0.5, "calibrated": 0.5, "distribution": {}, "cap_reasons": [], "historical_guardrail_applied": False}
+        if line is None
+        else _ub_probability_bundle(projection, line, p, row, data_quality, workload, regime, false_over, edge, historical=historical)
+    )
+    decision = _ub_decision(
+        p, row, projection, line, probability, fixed, recent, workload, regime,
+        false_over, feasibility, historical=historical
+    )
 
     merge_side = str(row.get("Canonical Side") or _v265_state_side(row.get("Final Decision State")) or ("OVER" if line is not None and merge_projection > line else "UNDER" if line is not None else "")).upper()
     po_projection = _ub_num(_ub_first([p, row], ["current_po_projection", "PO Projection"], None), None)
@@ -62261,10 +62641,42 @@ def _ub_build_row(row, p):
         "UB L5 Pooled K/BF": None if recent.get("l5", {}).get("rate") is None else round(recent["l5"]["rate"], 4),
         "UB L10 Pooled K/BF": None if recent.get("l10", {}).get("rate") is None else round(recent["l10"]["rate"], 4),
         "UB Recent Sample BF": recent.get("l5", {}).get("BF"),
-        "UB Conversion Score": false_over.get("conversion", {}).get("score"), "UB False Over Risk": false_over.get("score"), "UB False Over Status": false_over.get("status"),
+        "UB K Opportunity Score": _ub_opportunity_score(workload, fixed.get("lineup", {})),
+        "UB Conversion Score": false_over.get("conversion", {}).get("score"),
+        "UB Pitcher K% Used": round(fixed.get("skill_kbf", LEAGUE_AVG_K) * 100, 2),
+        "UB Whiff% Used": None if false_over.get("conversion", {}).get("whiff") is None else round(false_over.get("conversion", {}).get("whiff") * 100, 2),
+        "UB CSW% Used": None if false_over.get("conversion", {}).get("csw") is None else round(false_over.get("conversion", {}).get("csw") * 100, 2),
+        "UB PutAway% Used": None if false_over.get("conversion", {}).get("putaway") is None else round(false_over.get("conversion", {}).get("putaway") * 100, 2),
+        "UB False Over Risk": false_over.get("score"), "UB False Over Status": false_over.get("status"),
         "UB False Over Reasons": "; ".join(false_over.get("reasons") or []), "UB Line Feasibility Score": feasibility.get("score"), "UB Line Feasibility": feasibility.get("status"),
         "UB Required K/BF P25": feasibility.get("required_kbf_p25"), "UB Required K/BF P50": feasibility.get("required_kbf_p50"), "UB Required K/BF P75": feasibility.get("required_kbf_p75"), "UB Required K/BF P90": feasibility.get("required_kbf_p90"),
         "UB Data Quality": round(data_quality, 1),
+        "UB Merge Official Selector Tier": _ub_first([row, p], ["Official Selector Tier", "Official Card Tier", "official_play_filter"], "UNKNOWN"),
+        "UB Volume Risk": _ub_first([row, p], ["K Volume Risk", "Volume Risk", "workload_risk"], "UNKNOWN"),
+        "UB Damage Risk": _ub_first([row, p], ["K Damage Risk Label", "Damage Risk Label", "run_damage_risk_level"], "UNKNOWN"),
+        "UB Hist Calibration Source": historical.get("source"),
+        "UB Hist Calibration Source Path": historical.get("source_path"),
+        "UB Hist Line Bucket": historical.get("line_bucket"),
+        "UB Hist Side Plays": historical.get("side_plays"),
+        "UB Hist Side Win %": historical.get("side_win_rate"),
+        "UB Hist Side Avg Error": historical.get("side_avg_error"),
+        "UB Hist Side MAE": historical.get("side_mae"),
+        "UB Hist Line Plays": historical.get("line_plays"),
+        "UB Hist Line Win %": historical.get("line_win_rate"),
+        "UB Hist Line Avg Error": historical.get("line_avg_error"),
+        "UB Hist Line MAE": historical.get("line_mae"),
+        "UB Hist False Over Guard": bool(historical.get("false_over_guard")),
+        "UB Hist 5.5 Over Difficulty": bool(historical.get("line_55_difficulty")),
+        "UB Hist Strong Over Exception": bool(historical.get("strong_over_exception")),
+        "UB Hist Strong Over Signal Count": historical.get("strong_over_signal_count"),
+        "UB Hist 3.5 Breakout Under Risk": bool(historical.get("breakout_under_risk")),
+        "UB Hist 3.5 Breakout Signal Count": historical.get("breakout_under_signal_count"),
+        "UB Hist 4.5 Control Bucket": bool(historical.get("control_45")),
+        "UB Hist Ranking Penalty": historical.get("ranking_penalty"),
+        "UB Hist Probability Cap": historical.get("probability_cap"),
+        "UB Hist Calibration Flags": "; ".join(historical.get("flags") or []) or "NONE",
+        "UB Hist Projection Adjustment K": 0.0,
+        "UB Hist Projection Untouched": True,
         "UB Skill/Matchup Delta": round(ub_skill_matchup_delta, 3),
         "UB Workload Delta": round(ub_workload_delta, 3),
         "UB Suppression Escape Delta": round(ub_suppression_delta, 3),
@@ -62275,11 +62687,15 @@ def _ub_build_row(row, p):
         "UB Signal Ledger JSON": _ub_json({
             "skill": {"base": fixed.get("base_skill_kbf"), "final": fixed.get("skill_kbf"), "recent_weight": fixed.get("recent_weight")},
             "opponent": {"source": fixed.get("lineup", {}).get("source"), "exposure": fixed.get("lineup", {}).get("exposure_rate"), "single_log5": True},
-            "workload": workload, "recent": recent, "regime": regime, "suppression": fixed.get("escape"), "false_over": false_over, "feasibility": feasibility,
+            "workload": workload, "recent": recent, "regime": regime, "suppression": fixed.get("escape"),
+            "false_over": false_over, "feasibility": feasibility,
+            "historical_calibration": historical,
         }),
         "UB No Sportsbook Leakage": True,
     }
     output.update(_brain_profile(p, row, output))
+    output["UB Official Tier"] = output.get("Best Play Tier")
+    output["UB Pregame Feature Persistence"] = "COMPLETE_V1_1"
     output["UB Snapshot ID"] = _ub_hash_payload({
         "date": output.get("Slate Date"), "game": output.get("GamePk"), "pitcher": output.get("Pitcher ID") or output.get("Pitcher"),
         "line": line, "stage": output.get("UB Lineup Stage"), "version": UNDEFEATED_BETA_VERSION,
@@ -62325,15 +62741,21 @@ def build_undefeated_beta_table(board):
     return out
 
 
-def _ub_beta_card_frame(board, beta_df=None):
-    canonical = build_k_projection_pipeline(board)
-    beta_df = build_undefeated_beta_table(board) if beta_df is None else beta_df
-    if canonical is None or canonical.empty or beta_df is None or beta_df.empty:
+def _ub_apply_beta_to_k_frame(base_df, beta_df):
+    """Overlay Undefeated Beta on an existing K Upside DataFrame.
+
+    This preserves every existing K Upside enrichment/card field and changes only
+    the visible projection/decision/workload fields needed for the Beta challenger
+    presentation. Merge V2 remains a separate protected control model.
+    """
+    if base_df is None or not isinstance(base_df, pd.DataFrame) or base_df.empty:
         return pd.DataFrame()
+    if beta_df is None or not isinstance(beta_df, pd.DataFrame) or beta_df.empty:
+        return base_df.copy()
     beta_map = {normalize_name(r.get("Pitcher")): r for r in beta_df.to_dict("records")}
-    out = canonical.copy()
+    out = base_df.copy()
     for idx, sr in out.iterrows():
-        name = normalize_name(sr.get("Pitcher") or "")
+        name = normalize_name(sr.get("Pitcher") or sr.get("pitcher") or "")
         ub = beta_map.get(name)
         if not ub:
             continue
@@ -62359,10 +62781,16 @@ def _ub_beta_card_frame(board, beta_df=None):
         out.at[idx, "IP Floor"] = ub.get("UB IP P50")
         out.at[idx, "IP PROJ"] = ub.get("UB IP P50")
         out.at[idx, "Projected IP"] = ub.get("UB IP P50")
-        out.at[idx, "Winning File K Source"] = "UNDEFEATED BETA · MERGE CONTROL CHALLENGER"
+        out.at[idx, "Winning File K Source"] = "UNDEFEATED BETA · K UPSIDE INTEGRATED"
         for key, value in ub.items():
             out.at[idx, key] = value
     return out
+
+
+def _ub_beta_card_frame(board, beta_df=None):
+    canonical = build_k_projection_pipeline(board)
+    beta_df = build_undefeated_beta_table(board) if beta_df is None else beta_df
+    return _ub_apply_beta_to_k_frame(canonical, beta_df)
 
 
 def _ub_escape_csv_text(value):
@@ -62643,6 +63071,34 @@ def build_undefeated_beta_grade_report():
             l = int((sub["Undefeated Beta Result"] == "LOSS").sum())
             confidence_rows.append({"Bucket": f"{lo:.0f}-{min(99,hi):.0f}%", "N": w+l, "W": w, "L": l, "Win %": round(100*w/max(1,w+l),1)})
 
+    historical_guard_records = []
+    def _flag_bool_series(frame, col):
+        if col not in frame.columns:
+            return pd.Series(False, index=frame.index)
+        return frame[col].map(lambda x: str(x).strip().upper() in {"TRUE","1","YES","Y"} or x is True)
+    for col, label in [
+        ("UB Hist False Over Guard", "False-OVER guard"),
+        ("UB Hist 5.5 Over Difficulty", "5.5 OVER difficulty"),
+        ("UB Hist 3.5 Breakout Under Risk", "3.5 breakout-UNDER risk"),
+        ("UB Hist Strong Over Exception", "Strong OVER exception"),
+        ("UB Hist 4.5 Control Bucket", "4.5 control bucket"),
+    ]:
+        if graded.empty or col not in graded.columns:
+            continue
+        sub = graded[_flag_bool_series(graded, col)]
+        if sub.empty:
+            continue
+        w = int((sub["Undefeated Beta Result"] == "WIN").sum())
+        l = int((sub["Undefeated Beta Result"] == "LOSS").sum())
+        rescued_n = int(sub.get("Merge Loss Rescued", pd.Series(False, index=sub.index)).fillna(False).map(lambda x: str(x).strip().upper() in {"TRUE","1","YES","Y"} or x is True).sum())
+        broken_n = int(sub.get("Merge Win Broken", pd.Series(False, index=sub.index)).fillna(False).map(lambda x: str(x).strip().upper() in {"TRUE","1","YES","Y"} or x is True).sum())
+        historical_guard_records.append({
+            "Guard": label, "N": w+l, "W": w, "L": l,
+            "Win %": round(100*w/max(1,w+l),1),
+            "Rescued": rescued_n, "Broken": broken_n,
+            "Net Rescue": rescued_n-broken_n,
+        })
+
     return {
         "status": "READY", "rows": len(graded),
         "beta_record": {"wins": wins, "losses": losses, "win_rate": None if wins+losses == 0 else round(wins/(wins+losses),4)},
@@ -62657,6 +63113,7 @@ def build_undefeated_beta_grade_report():
         "side_records": record_by("Undefeated Beta Side", ["OVER","UNDER"]),
         "tier_records": record_by("Best Play Tier", ["S","A","B","PASS"]),
         "confidence_buckets": confidence_rows,
+        "historical_guard_records": historical_guard_records,
         "miss_classes": graded["Miss Class"].value_counts(dropna=False).to_dict() if "Miss Class" in graded.columns else {},
     }
 
@@ -62672,9 +63129,13 @@ def _ub_summary_metrics(beta_df):
     }
 
 
-def render_undefeated_beta_tab(board):
-    st.markdown('<div class="section-title-pro">🏆 Undefeated Beta — Merge Challenger</div>', unsafe_allow_html=True)
-    st.caption("Shadow challenger. Merge V2 remains the protected production/control model. PO remains the external comparison. OG is not an active daily model.")
+def render_undefeated_beta_tab(board, integrated=False):
+    if integrated:
+        st.markdown("### 🏆 Undefeated Beta — K Upside Controls / Audit")
+        st.caption("Undefeated Beta now lives inside K Upside. Merge V2 is preserved and run separately as the control; PO remains the external comparison. This section handles Beta snapshots, grading, copy/paste, and audit without creating a duplicate top-level K tab.")
+    else:
+        st.markdown('<div class="section-title-pro">🏆 Undefeated Beta — Merge Challenger</div>', unsafe_allow_html=True)
+        st.caption("Shadow challenger. Merge V2 remains the protected production/control model. PO remains the external comparison. OG is not an active daily model.")
     beta = build_undefeated_beta_table(board)
     if beta.empty:
         st.info("Refresh the K board first. Undefeated Beta runs from the same frozen Merge inputs without changing Merge V2.")
@@ -62685,6 +63146,30 @@ def render_undefeated_beta_tab(board):
     c2.metric("A Tier", metrics["A"])
     c3.metric("Playable", metrics["official"])
     c4.metric("Merge ↔ Beta flips", metrics["disagreements"])
+
+    with st.expander("Merge V2 Historical Calibration Guardrails — read-only", expanded=False):
+        _hist = _ub_load_merge_calibration_summary()
+        st.caption(
+            "Used only to protect playability/ranking. It never changes Undefeated Beta's raw projection, BF, or K/BF. "
+            f"Source: {_hist.get('source')}."
+        )
+        _hist_rows = []
+        for _view in ("Side", "Line Bucket"):
+            for _bucket, _rec in ((_hist.get("tables") or {}).get(_view, {}) or {}).items():
+                _hist_rows.append({
+                    "View": _view, "Bucket": _bucket, "Plays": _rec.get("plays"),
+                    "Win %": _rec.get("win_rate"), "Avg Error (Actual-Proj)": _rec.get("avg_error"),
+                    "MAE": _rec.get("mae"), "Missed by One %": _rec.get("missed_by_one"),
+                })
+        if _hist_rows:
+            st.dataframe(pd.DataFrame(_hist_rows), use_container_width=True, hide_index=True)
+        st.markdown(
+            "- **OVER bias guard:** only activates when weak conversion/false-OVER evidence exists; strong multi-signal Overs can escape it.\n"
+            "- **5.5 OVER difficulty:** one-level playability downgrade unless 3+ independent support families clear the exception.\n"
+            "- **3.5 UNDER breakout guard:** blocks only when at least 2 breakout families are present.\n"
+            "- **4.5:** neutral control bucket; no blanket adjustment."
+        )
+
     snapshot_stage = st.selectbox(
         "Pregame snapshot label",
         ["AUTO", "EXPECTED_LINEUP", "CONFIRMED_LINEUP", "FINAL_PREGAME"],
@@ -62705,10 +63190,11 @@ def render_undefeated_beta_tab(board):
     with st.expander("Copy/Paste — Full Undefeated Beta Board", expanded=False):
         st.text_area("Full board", build_undefeated_beta_copy_paste(beta, best_only=False), height=360, key="ub_full_copy")
 
-    st.markdown("### Undefeated Beta Player Cards")
-    st.caption("Same Merge V2 card shell: Pitch Arsenal, Batter-by-Batter, Recent K History, and H2H / Threshold Ladder are preserved. Beta + Brain details are added underneath.")
-    cards = _ub_beta_card_frame(board, beta)
-    _kclean_render_player_cards(cards, board=board, limit=None)
+    if not integrated:
+        st.markdown("### Undefeated Beta Player Cards")
+        st.caption("Same Merge V2 card shell: Pitch Arsenal, Batter-by-Batter, Recent K History, and H2H / Threshold Ladder are preserved. Beta + Brain details are added underneath.")
+        cards = _ub_beta_card_frame(board, beta)
+        _kclean_render_player_cards(cards, board=board, limit=None)
 
     with st.expander("Undefeated Beta Full Audit", expanded=False):
         cols = [c for c in [
@@ -62717,7 +63203,12 @@ def render_undefeated_beta_tab(board):
             "UB Fixed Core Projection", "Undefeated Beta Projection", "Undefeated Beta Side", "Undefeated Beta Playability", "UB Calibrated Clear Probability %",
             "UB Skill/Matchup Delta", "UB Workload Delta", "UB Suppression Escape Delta", "UB Cap Adjustment", "UB Attribution Residual",
             "UB BF P10", "UB BF P50", "UB BF P90", "UB IP P50", "UB Skill K/BF", "UB Matchup K/BF", "UB Lineup Exposure K%",
+            "UB K Opportunity Score", "UB Conversion Score", "UB Pitcher K% Used", "UB Whiff% Used", "UB CSW% Used", "UB PutAway% Used",
             "UB Suppression Escape Score", "UB False Over Risk", "UB Recent K Acceleration", "UB Workload Escape Score",
+            "UB Hist Calibration Source", "UB Hist Calibration Flags", "UB Hist Side Plays", "UB Hist Side Avg Error",
+            "UB Hist Line Bucket", "UB Hist Line Plays", "UB Hist Line Win %", "UB Hist Line Avg Error", "UB Hist Line MAE",
+            "UB Hist False Over Guard", "UB Hist 5.5 Over Difficulty", "UB Hist Strong Over Exception",
+            "UB Hist 3.5 Breakout Under Risk", "UB Hist 4.5 Control Bucket", "UB Hist Ranking Penalty", "UB Hist Projection Adjustment K",
             "UB Last Pitch Count", "UB L3 Pitch Count", "UB Pitch Count Ramp State", "UB Regime", "UB Role",
             "Sports Brain Side", "Sports Brain Score", "Best Play Score", "Best Play Tier", "Sports Brain Verdict", "Brain Main Support", "Brain Main Risk",
         ] if c in beta.columns]
@@ -62750,6 +63241,9 @@ def render_undefeated_beta_tab(board):
                 if grade_report.get("confidence_buckets"):
                     st.markdown("**Calibrated confidence buckets**")
                     st.dataframe(pd.DataFrame(grade_report.get("confidence_buckets")), use_container_width=True, hide_index=True)
+                if grade_report.get("historical_guard_records"):
+                    st.markdown("**Historical guardrail performance — did it rescue losses without breaking wins?**")
+                    st.dataframe(pd.DataFrame(grade_report.get("historical_guard_records")), use_container_width=True, hide_index=True)
                 st.json({"projection": pr, "miss_classes": grade_report.get("miss_classes")})
     except Exception as exc:
         st.info(f"Beta grade summary unavailable: {str(exc)[:140]}")
@@ -62837,6 +63331,38 @@ def _ub_self_test_report():
         add("multi_signal_suppression_escape", escape.get("support_count", 0) >= 3 and escape.get("alpha", 1.0) < 1.0, str(escape))
     except Exception as exc:
         add("multi_signal_suppression_escape", False, str(exc))
+    try:
+        fixed = {"skill_kbf": 0.205, "escape": {"score": 30}}
+        recent = {"score": 42}
+        work = {"confidence": "MEDIUM", "bf_p50": 21, "workload_escape_score": 20}
+        fo = {"score": 55, "conversion": {"score": 42}}
+        feas = {"score": 52}
+        hist = _ub_historical_calibration_profile(5.5, "OVER", fixed, recent, work, fo, feas)
+        add("historical_55_over_guard_active", bool(hist.get("line_55_difficulty")) and not bool(hist.get("strong_over_exception")), str(hist))
+        add("historical_guard_never_moves_projection", _ub_num(hist.get("projection_adjustment_k"), 99) == 0.0 and bool(hist.get("projection_untouched")), str(hist))
+    except Exception as exc:
+        add("historical_55_over_guard_active", False, str(exc))
+        add("historical_guard_never_moves_projection", False, str(exc))
+    try:
+        fixed = {"skill_kbf": 0.255, "escape": {"score": 72}}
+        recent = {"score": 70}
+        work = {"confidence": "HIGH", "bf_p50": 23, "workload_escape_score": 70}
+        fo = {"score": 20, "conversion": {"score": 58}}
+        feas = {"score": 62}
+        hist = _ub_historical_calibration_profile(3.5, "UNDER", fixed, recent, work, fo, feas)
+        add("historical_35_breakout_under_guard", bool(hist.get("breakout_under_risk")) and int(hist.get("breakout_under_signal_count") or 0) >= 2, str(hist))
+    except Exception as exc:
+        add("historical_35_breakout_under_guard", False, str(exc))
+    try:
+        fixed = {"skill_kbf": 0.22, "escape": {"score": 35}}
+        recent = {"score": 50}
+        work = {"confidence": "HIGH", "bf_p50": 22, "workload_escape_score": 10}
+        fo = {"score": 20, "conversion": {"score": 52}}
+        feas = {"score": 60}
+        hist = _ub_historical_calibration_profile(4.5, "UNDER", fixed, recent, work, fo, feas)
+        add("historical_45_control_no_penalty", bool(hist.get("control_45")) and _ub_num(hist.get("ranking_penalty"), 99) == 0.0, str(hist))
+    except Exception as exc:
+        add("historical_45_control_no_penalty", False, str(exc))
     return tests
 
 
@@ -62876,9 +63402,8 @@ std_schedule_games = globals().get('_impl_std_schedule_games_02', globals().get(
 if std_schedule_games is None:
     raise RuntimeError("No implementation available for std_schedule_games")
 
-tab_kproj, tab_ub, tab_brain, tab_beta_outs, tab_first_inning_k, tab_beta_ip_debug, tab_moneyline, tab_loss_lab, tab_iq, tab_30d_learning, tab_learning_lab, tab_calibration, tab2, tab3, tab4, tab5, tab6 = st.tabs([
+tab_kproj, tab_brain, tab_beta_outs, tab_first_inning_k, tab_beta_ip_debug, tab_moneyline, tab_loss_lab, tab_iq, tab_30d_learning, tab_learning_lab, tab_calibration, tab2, tab3, tab4, tab5, tab6 = st.tabs([
     "K PROJ / UPSIDE",
-    "🏆 UNDEFEATED BETA",
     "🧠 SPORTS ANALYSIS BRAIN",
     "🎯 OUTS BETA",
     "1ST INN K",
@@ -62898,9 +63423,10 @@ tab_kproj, tab_ub, tab_brain, tab_beta_outs, tab_first_inning_k, tab_beta_ip_deb
 
 with tab_kproj:
     render_kproj_tab(board)
-
-with tab_ub:
-    render_undefeated_beta_tab(board)
+    # Undefeated Beta is intentionally integrated here rather than duplicated
+    # as a second top-level K tab. Cards above already use the Beta challenger
+    # frame and preserve Pitch Arsenal / Batter-by-Batter / Recent K History / H2H.
+    render_undefeated_beta_tab(board, integrated=True)
 
 with tab_brain:
     render_sports_analysis_brain_tab(board)
