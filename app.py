@@ -775,7 +775,7 @@ except ModuleNotFoundError as _validation_import_error:
             "compatibility_fallback": True,
         }
 
-APP_VERSION = "ONE WAY PICKZ K UPSIDE + UNDEFEATED BETA V1.5 COMPONENT REBUILD 2026-08-16"
+APP_VERSION = "ONE WAY PICKZ K UPSIDE + UNDEFEATED BETA V1.6 WORKLOAD COHERENCE 2026-08-16"
 FULL_APP_UPDATE_MARKER = "FULL_APP_CANONICAL_K_PIPELINE_2026_07_30"
 MERGE_V269_SAFE_UPDATE_MARKER = "V269_SAFE_SAVANT_ORDER_SHADOW_NO_CONTROL_PROJECTION_CHANGE"
 MERGE_V2610_DATA_HARDENING_MARKER = "V2610_MLBAM_HAND_FAIL_CLOSED_AUX_LAST_GOOD_NO_PRODUCTION_PROMOTION"
@@ -61381,7 +61381,7 @@ if render_batter_fs_tab is None:
 # Shadow challenger layered on the protected Merge V2.6.10 canonical control.
 # This block never mutates the Merge control table/board in place.
 # =============================================================================
-UNDEFEATED_BETA_VERSION = "UNDEFEATED_BETA_V1_5_COMPONENT_REBUILD"
+UNDEFEATED_BETA_VERSION = "UNDEFEATED_BETA_V1_6_WORKLOAD_COHERENCE"
 SPORTS_ANALYSIS_BRAIN_VERSION = "SPORTS_ANALYSIS_BRAIN_V1_5_COMPONENT_REBUILD_2026_08_16"
 UNDEFEATED_BETA_MODE = "SHADOW_CHALLENGER_NO_MERGE_PROMOTION"
 UB_BASELINE_CONTROL_VERSION = "MERGE_V2_6_10_PROTECTED_CONTROL"
@@ -61486,6 +61486,11 @@ UB_CONFIG = {
     "component_workload_authority_confirmed_role": 0.92,
     "component_data_quality_penalty": 0.10,
     "component_low_data_quality_penalty": 0.15,
+    # V1.6 workload coherence / live-summary fallback.
+    "live_workload_l5_weight": 0.65,
+    "live_workload_l10_weight": 0.35,
+    "live_workload_center_authority": 0.65,
+    "live_workload_mismatch_bf": 2.5,
     "recency_decay_half_life_starts": 3.0,
     "recency_decay_max_starts": 10,
     "persistent_direction_min_history": 4,
@@ -62028,6 +62033,29 @@ def _ub_workload_distribution(p, row=None):
         if ip_avg is not None and ip_avg > 0 and len(recent_ip) < 3: recent_ip.append(ip_avg)
         if pc_avg is not None and pc_avg > 0 and len(recent_pc) < 3: recent_pc.append(pc_avg)
 
+    # V1.6: APP97 live workload summaries are a fallback when the serialized K-history
+    # game log is thin. These windows overlap, so they NEVER count as separate starts;
+    # they only provide a current workload center and corroborating pitch/IP context.
+    live_l5_bf = _ub_num(_ub_first([row, p], ["APP97 Live L5 BF Median", "Live L5 BF Median", "L5 BF Median"], None), None)
+    live_l10_bf = _ub_num(_ub_first([row, p], ["APP97 Live L10 BF Median", "Live L10 BF Median", "L10 BF Median"], None), None)
+    live_l5_ip = _ub_num(_ub_first([row, p], ["APP97 Live L5 IP Avg", "Live L5 IP Avg", "L5 IP Avg"], None), None)
+    live_l5_pc = _ub_num(_ub_first([row, p], ["APP97 Live L5 Pitch Median", "Live L5 Pitch Median", "L5 Pitch Median"], None), None)
+    live_bf_vals = [x for x in (live_l5_bf, live_l10_bf) if x is not None and x > 0]
+    live_workload_center = None
+    if live_bf_vals:
+        if live_l5_bf is not None and live_l10_bf is not None:
+            live_workload_center = (
+                float(UB_CONFIG["live_workload_l5_weight"]) * live_l5_bf
+                + float(UB_CONFIG["live_workload_l10_weight"]) * live_l10_bf
+            )
+        else:
+            live_workload_center = float(live_bf_vals[0])
+    live_workload_summary = bool(live_workload_center is not None)
+    if len(recent_ip) < 3 and live_l5_ip is not None and live_l5_ip > 0:
+        recent_ip.append(live_l5_ip)
+    if len(recent_pc) < 3 and live_l5_pc is not None and live_l5_pc > 0:
+        recent_pc.append(live_l5_pc)
+
     # Do not duplicate the same recent starts through both game-log rows and summary medians.
     # Summary authority is fallback-only when serialization is thin.
     if len(recent_bf) < 3 and recent_authority.get("bf_median") is not None:
@@ -62043,11 +62071,15 @@ def _ub_workload_distribution(p, row=None):
     recent_ip_med = float(np.median(recent_ip[:6])) if recent_ip else merge_ip
     sample_n = max(len(recent_bf), int(recent_authority.get("recent_starter_games") or 0))
 
-    # V1.5: this is the INDEPENDENT workload estimate. The component blend below
-    # performs the regularization back toward Merge, so pre-blending 60% Merge here
-    # would anchor workload twice and hide real BF/IP changes.
+    # V1.6: this is the INDEPENDENT workload estimate. Regularization toward Merge
+    # happens later in the component blend. Verified recent starts get first authority;
+    # when serialized starts are thin, APP97 live L5/L10 workload summaries can provide
+    # a moderate current-state center without pretending overlapping windows are games.
     if sample_n >= 3 and not role.get("confirmed_short"):
         center = recent_bf_med
+    elif live_workload_summary and not role.get("confirmed_short"):
+        live_auth = float(UB_CONFIG["live_workload_center_authority"])
+        center = merge_bf * (1.0 - live_auth) + live_workload_center * live_auth
     elif sample_n:
         center = 0.65 * merge_bf + 0.35 * recent_bf_med
     else:
@@ -62059,6 +62091,11 @@ def _ub_workload_distribution(p, row=None):
     strong_recent = bool(recent_authority.get("strong") and not role.get("confirmed_short"))
     bf_gap = recent_bf_med - merge_bf
     ip_gap = None if recent_ip_med is None or merge_ip is None else recent_ip_med - merge_ip
+    live_bf_gap = None if live_workload_center is None else live_workload_center - merge_bf
+    if live_bf_gap is not None and abs(live_bf_gap) >= float(UB_CONFIG["live_workload_mismatch_bf"]):
+        mismatch_score += min(24.0, 8.0 + abs(live_bf_gap) * 4.0)
+        mismatch_reasons.append(f"APP97 live workload center {live_workload_center:.1f} BF vs Merge {merge_bf:.1f}")
+        workload_escape = max(workload_escape, float(clamp(42.0 + abs(live_bf_gap) * 7.0, 0.0, 72.0)))
 
     if strong_recent and bf_gap >= float(UB_CONFIG["recent_workload_gap_bf"]):
         mismatch_score += min(70.0, 35.0 + bf_gap * 6.0)
@@ -62204,6 +62241,8 @@ def _ub_workload_distribution(p, row=None):
     confidence = "HIGH" if sample_n >= 5 and role["confidence"] == "HIGH" else "MEDIUM" if sample_n >= 3 else "LOW"
     if strong_recent and sample_n >= 3 and not role.get("confirmed_short"):
         confidence = "HIGH"
+    elif live_workload_summary and not role.get("confirmed_short") and confidence == "LOW":
+        confidence = "MEDIUM"
     if role["role"] in {"OPENER", "RELIEVER", "LIMITED_STARTER"}:
         confidence = "MEDIUM" if role["confidence"] == "HIGH" else "LOW"
 
@@ -62215,6 +62254,11 @@ def _ub_workload_distribution(p, row=None):
         "ip_p50": round(p50 * ip_per_bf, 2), "ip_p75": round(p75 * ip_per_bf, 2), "ip_p90": round(p90 * ip_per_bf, 2),
         "recent_bf_median": round(recent_bf_med, 2), "recent_bf_l3": round(recent_bf_l3, 2), "recent_bf_l10": round(recent_bf_l10, 2),
         "recent_ip_median": None if recent_ip_med is None else round(recent_ip_med, 2),
+        "live_workload_center": None if live_workload_center is None else round(live_workload_center, 2),
+        "live_l5_bf": None if live_l5_bf is None else round(live_l5_bf, 2),
+        "live_l10_bf": None if live_l10_bf is None else round(live_l10_bf, 2),
+        "live_l5_ip": None if live_l5_ip is None else round(live_l5_ip, 2),
+        "live_l5_pitch": None if live_l5_pc is None else round(live_l5_pc, 1),
         "last_pitch_count": None if last_pc is None else round(last_pc, 1),
         "recent_pc_l3": None if pc_l3 is None else round(pc_l3, 1), "recent_pc_l5": None if pc_l5 is None else round(pc_l5, 1),
         "recent_pc_l10": None if pc_l10 is None else round(pc_l10, 1),
@@ -63401,6 +63445,21 @@ def _ub_component_blend_profile(merge_projection, fixed, workload, recent, regim
     blended_kbf=merge_kbf*(1.0-kbf_auth)+independent_kbf*kbf_auth
     raw=blended_bf*blended_kbf
 
+    # V1.6 coherence: the SAME workload used in the biological K projection must also
+    # drive displayed BF/IP, required K/BF, UNDER ceiling paths, and decision guards.
+    # Preserve the independent distribution shape while scaling it to the blended P50.
+    bf_scale = blended_bf / max(independent_bf, 1e-9)
+    blended_workload = dict(workload)
+    for key in ("bf_p10","bf_p25","bf_p50","bf_p75","bf_p90"):
+        val = _ub_num(workload.get(key), None)
+        if val is not None:
+            blended_workload[key] = float(val) * bf_scale
+    ip_per_bf = float(_ub_num(workload.get("ip_per_bf"), 0.245) or 0.245)
+    for bf_key, ip_key in (("bf_p10","ip_p10"),("bf_p25","ip_p25"),("bf_p50","ip_p50"),("bf_p75","ip_p75"),("bf_p90","ip_p90")):
+        if blended_workload.get(bf_key) is not None:
+            blended_workload[ip_key] = float(blended_workload[bf_key]) * ip_per_bf
+    blended_ip = float(blended_workload.get("ip_p50") or (blended_bf * ip_per_bf))
+
     # Deduplicated structural-family ledger controls movement cap only; it does not add K twice.
     raw_families=[]
     norm_map={"RECENT_KBF":"K_SKILL","K_SKILL":"K_SKILL","RECENT_K_SKILL":"K_SKILL","SWING_MISS":"PITCH_QUALITY","PITCH_QUALITY":"PITCH_QUALITY","CSW_COMMAND":"PITCH_QUALITY","PUTAWAY":"COMMAND_CONVERSION","COMMAND_PUTAWAY":"COMMAND_CONVERSION","PITCH_MIX_SHIFT":"ARSENAL","ARSENAL":"ARSENAL","K_EFFICIENCY":"K_EFFICIENCY","TTO_RETENTION":"TTO","WORKLOAD":"WORKLOAD"}
@@ -63417,7 +63476,7 @@ def _ub_component_blend_profile(merge_projection, fixed, workload, recent, regim
     cap=float(UB_CONFIG["strong_max_move_k"] if strong else UB_CONFIG["ordinary_max_move_k"])
     if workload.get("workload_mismatch_score",0)>=65 or not merge_component_sane: cap=max(cap,float(UB_CONFIG["structural_reconcile_max_move_k"]))
     capped=merge_projection+float(clamp(raw-merge_projection,-cap,cap))
-    coh_work=dict(workload); coh_work["bf_p50"]=blended_bf
+    coh_work=dict(blended_workload)
     coherence=_ub_projection_coherence_adjustment(merge_projection,capped,fixed,recent,coh_work,regime)
     projection=float(coherence.get("projection",capped))
 
@@ -63433,7 +63492,8 @@ def _ub_component_blend_profile(merge_projection, fixed, workload, recent, regim
     guard_adjustment=projection-pre_guard
     residual=(projection-merge_projection)-(skill_delta+pitch_delta+suppression_delta+workload_delta+guard_adjustment)
     return {
-        "projection":projection,"raw_component_projection":raw,"merge_bf":merge_bf,"independent_bf":independent_bf,"blended_bf":blended_bf,
+        "projection":projection,"raw_component_projection":raw,"merge_bf":merge_bf,"independent_bf":independent_bf,"blended_bf":blended_bf,"blended_ip":blended_ip,
+        "blended_workload":blended_workload,
         "merge_implied_kbf":merge_kbf,"merge_component_sane":merge_component_sane,"independent_kbf":independent_kbf,"blended_kbf":blended_kbf,
         "kbf_authority":kbf_auth,"workload_authority":bf_auth,"movement_cap":cap,
         "skill_matchup_delta":skill_delta,"pitch_trend_delta":pitch_delta,"suppression_delta":suppression_delta,"workload_delta":workload_delta,
@@ -63458,6 +63518,7 @@ def _ub_build_row(row, p):
     structural_delta = fixed["projection"] - merge_projection
     data_quality = _ub_data_quality(p, row, fixed.get("lineup", {}), workload, regime)
     components = _ub_component_blend_profile(merge_projection, fixed, workload, recent, regime, data_quality)
+    decision_workload = components.get("blended_workload") if isinstance(components.get("blended_workload"), dict) else workload
     projection = round(float(components.get("projection") or merge_projection), 2)
     # Legacy display field retained; in V1.5 it represents independent K/BF authority.
     weight = float(components.get("kbf_authority") or UB_CONFIG["component_kbf_authority_normal"])
@@ -63478,19 +63539,19 @@ def _ub_build_row(row, p):
     ub_attribution_residual = float(components.get("attribution_residual") or 0.0)
 
     edge = None if line is None else projection - line
-    false_over = _ub_false_over_profile(p, row, fixed, recent, workload, line, projection)
-    feasibility = _ub_line_feasibility(line, workload, fixed.get("skill_kbf", LEAGUE_AVG_K))
-    data_quality = _ub_data_quality(p, row, fixed.get("lineup", {}), workload, regime)
+    false_over = _ub_false_over_profile(p, row, fixed, recent, decision_workload, line, projection)
+    feasibility = _ub_line_feasibility(line, decision_workload, fixed.get("skill_kbf", LEAGUE_AVG_K))
+    data_quality = _ub_data_quality(p, row, fixed.get("lineup", {}), decision_workload, regime)
     pre_hist_side = "NO LINE" if line is None else ("OVER" if projection > line else "UNDER" if projection < line else "PUSH")
     historical = _ub_historical_calibration_profile(line, pre_hist_side, fixed, recent, workload, false_over, feasibility)
-    under_ceiling = _ub_under_ceiling_risk(line, pre_hist_side, fixed, recent, workload, regime)
+    under_ceiling = _ub_under_ceiling_risk(line, pre_hist_side, fixed, recent, decision_workload, regime)
     probability = (
         {"side": "NO LINE", "raw": 0.5, "calibrated": 0.5, "distribution": {}, "cap_reasons": [], "historical_guardrail_applied": False}
         if line is None
-        else _ub_probability_bundle(projection, line, p, row, data_quality, workload, regime, false_over, edge, historical=historical, under_ceiling=under_ceiling)
+        else _ub_probability_bundle(projection, line, p, row, data_quality, decision_workload, regime, false_over, edge, historical=historical, under_ceiling=under_ceiling)
     )
     decision = _ub_decision(
-        p, row, projection, line, probability, fixed, recent, workload, regime,
+        p, row, projection, line, probability, fixed, recent, decision_workload, regime,
         false_over, feasibility, historical=historical, under_ceiling=under_ceiling
     )
 
@@ -63527,8 +63588,8 @@ def _ub_build_row(row, p):
         "Undefeated Beta Playability": decision["playability"], "Undefeated Beta Decision State": decision["state"], "Undefeated Beta Decision Reason": decision["reason"],
         "UB Raw Clear Probability %": round(probability.get("raw", 0.5) * 100, 1), "UB Calibrated Clear Probability %": round(probability.get("calibrated", 0.5) * 100, 1),
         "UB Confidence Cap Reason": "; ".join(probability.get("cap_reasons") or []) or "NONE",
-        "UB BF P10": workload.get("bf_p10"), "UB BF P25": workload.get("bf_p25"), "UB BF P50": workload.get("bf_p50"), "UB BF P75": workload.get("bf_p75"), "UB BF P90": workload.get("bf_p90"),
-        "UB IP P10": workload.get("ip_p10"), "UB IP P25": workload.get("ip_p25"), "UB IP P50": workload.get("ip_p50"), "UB IP P75": workload.get("ip_p75"), "UB IP P90": workload.get("ip_p90"),
+        "UB BF P10": round(float(decision_workload.get("bf_p10") or 0.0),2), "UB BF P25": round(float(decision_workload.get("bf_p25") or 0.0),2), "UB BF P50": round(float(decision_workload.get("bf_p50") or 0.0),2), "UB BF P75": round(float(decision_workload.get("bf_p75") or 0.0),2), "UB BF P90": round(float(decision_workload.get("bf_p90") or 0.0),2),
+        "UB IP P10": round(float(decision_workload.get("ip_p10") or 0.0),2), "UB IP P25": round(float(decision_workload.get("ip_p25") or 0.0),2), "UB IP P50": round(float(decision_workload.get("ip_p50") or 0.0),2), "UB IP P75": round(float(decision_workload.get("ip_p75") or 0.0),2), "UB IP P90": round(float(decision_workload.get("ip_p90") or 0.0),2),
         "UB Workload Confidence": workload.get("confidence"), "UB Workload Escape Score": workload.get("workload_escape_score"), "UB Workload Note": workload.get("note"),
         "UB Workload Mismatch Score": workload.get("workload_mismatch_score"), "UB Workload Mismatch Reasons": "; ".join(workload.get("workload_mismatch_reasons") or []),
         "UB Pitch Capacity BF": workload.get("pitch_capacity_bf"), "UB Pitch Capacity Gap BF": workload.get("pitch_capacity_gap_bf"),
@@ -63560,7 +63621,11 @@ def _ub_build_row(row, p):
         "UB Merge BF Component": round(float(components.get("merge_bf") or 0.0),2),
         "UB Independent BF Component": round(float(components.get("independent_bf") or 0.0),2),
         "UB Blended BF": round(float(components.get("blended_bf") or 0.0),2),
+        "UB Blended IP": round(float(components.get("blended_ip") or 0.0),2),
         "UB Workload Authority": round(float(components.get("workload_authority") or 0.0),3),
+        "UB Live Workload Center": workload.get("live_workload_center"),
+        "UB Live L5 BF": workload.get("live_l5_bf"), "UB Live L10 BF": workload.get("live_l10_bf"),
+        "UB Live L5 IP": workload.get("live_l5_ip"), "UB Live L5 Pitch": workload.get("live_l5_pitch"),
         "UB Raw Component Projection": round(float(components.get("raw_component_projection") or projection),3),
         "UB Component Math Status": components.get("math_status"),
         "UB Persistent Direction Status": direction_audit.get("status"), "UB Persistent Direction Sample": direction_audit.get("sample"),
@@ -63798,12 +63863,15 @@ def _ub_apply_beta_to_k_frame(base_df, beta_df):
         out.at[idx, "K Sim Current Side Prob %"] = prob
         out.at[idx, "Current Side Prob %"] = prob
         out.at[idx, "Confidence %"] = prob
-        out.at[idx, "APP97 Reconciled Expected BF"] = ub.get("UB BF P50")
-        out.at[idx, "Exp BF"] = ub.get("UB BF P50")
-        out.at[idx, "Projected BF"] = ub.get("UB BF P50")
-        out.at[idx, "IP Floor"] = ub.get("UB IP P50")
-        out.at[idx, "IP PROJ"] = ub.get("UB IP P50")
-        out.at[idx, "Projected IP"] = ub.get("UB IP P50")
+        # V1.6: visible workload is the same blended workload used by final K math.
+        final_bf = ub.get("UB Blended BF") if ub.get("UB Blended BF") is not None else ub.get("UB BF P50")
+        final_ip = ub.get("UB Blended IP") if ub.get("UB Blended IP") is not None else ub.get("UB IP P50")
+        out.at[idx, "APP97 Reconciled Expected BF"] = final_bf
+        out.at[idx, "Exp BF"] = final_bf
+        out.at[idx, "Projected BF"] = final_bf
+        out.at[idx, "IP Floor"] = final_ip
+        out.at[idx, "IP PROJ"] = final_ip
+        out.at[idx, "Projected IP"] = final_ip
         out.at[idx, "Winning File K Source"] = "UNDEFEATED BETA · K UPSIDE INTEGRATED"
         for key, value in ub.items():
             out.at[idx, key] = value
@@ -64229,7 +64297,7 @@ def render_undefeated_beta_tab(board, integrated=False):
             "UB K Opportunity Score", "UB Conversion Score", "UB Pitcher K% Used", "UB Whiff% Used", "UB CSW% Used", "UB PutAway% Used",
             "UB Current State", "UB Current State Authority", "UB Current State K/BF", "UB Current State Recent Consensus K/BF", "UB Current State Recent Weight",
             "UB Current State Support", "UB Current State Risk", "UB True Talent K/BF", "UB True Talent Sources", "UB Recency Decay K/BF", "UB Recency Decay Starts",
-            "UB Merge Implied K/BF", "UB Independent Matchup K/BF", "UB Blended K/BF", "UB KBF Authority", "UB Merge BF Component", "UB Independent BF Component", "UB Blended BF", "UB Workload Authority", "UB Raw Component Projection", "UB Component Math Status",
+            "UB Merge Implied K/BF", "UB Independent Matchup K/BF", "UB Blended K/BF", "UB KBF Authority", "UB Merge BF Component", "UB Independent BF Component", "UB Blended BF", "UB Blended IP", "UB Workload Authority", "UB Live Workload Center", "UB Live L5 BF", "UB Live L10 BF", "UB Live L5 IP", "UB Live L5 Pitch", "UB Raw Component Projection", "UB Component Math Status",
             "UB Persistent Direction Status", "UB Persistent Direction Sample", "UB Persistent Direction Side", "UB Persistent Direction Share", "UB Persistent Direction Conflict",
             "UB Suppression Escape Score", "UB False Over Risk", "UB Under Ceiling Risk", "UB Under Ceiling Status", "UB Recent K Acceleration", "UB Pitch Trend Score", "UB Pitch Trend Status", "UB Pitch Trend KBF Adjustment", "UB K per 100 Pitches L3", "UB K per 100 Pitches L10", "UB Workload Escape Score", "UB Workload Mismatch Score", "UB Pitch Capacity BF", "UB Pitch Count Authority Score", "UB Manager Leash State", "UB Damage K Independence", "UB Recent Starter Authority",
             "UB Hist Calibration Source", "UB Hist Calibration Flags", "UB Hist Side Plays", "UB Hist Side Avg Error",
