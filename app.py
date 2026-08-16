@@ -775,7 +775,7 @@ except ModuleNotFoundError as _validation_import_error:
             "compatibility_fallback": True,
         }
 
-APP_VERSION = "ONE WAY PICKZ K UPSIDE + UNDEFEATED BETA V1.3 PITCH TREND + WORKLOAD 2026-08-15"
+APP_VERSION = "ONE WAY PICKZ K UPSIDE + UNDEFEATED BETA V1.5 COMPONENT REBUILD 2026-08-16"
 FULL_APP_UPDATE_MARKER = "FULL_APP_CANONICAL_K_PIPELINE_2026_07_30"
 MERGE_V269_SAFE_UPDATE_MARKER = "V269_SAFE_SAVANT_ORDER_SHADOW_NO_CONTROL_PROJECTION_CHANGE"
 MERGE_V2610_DATA_HARDENING_MARKER = "V2610_MLBAM_HAND_FAIL_CLOSED_AUX_LAST_GOOD_NO_PRODUCTION_PROMOTION"
@@ -53794,6 +53794,23 @@ def _kclean_render_player_cards(df, board=None, limit=None):
                 _ub_escape = _kclean_fmt(row.get("UB Suppression Escape Score"), 0)
                 _ub_false = _kclean_fmt(row.get("UB False Over Risk"), 0)
                 _ub_recent = _kclean_fmt(row.get("UB Recent K Acceleration"), 0)
+                _ub_current_state = html.escape(str(row.get("UB Current State") or "NORMAL"))
+                _ub_current_state_auth = _kclean_fmt(row.get("UB Current State Authority"), 0)
+                _ub_current_state_kbf_raw = _kclean_num(row.get("UB Current State K/BF"), np.nan)
+                _ub_current_state_kbf = _kclean_fmt((_ub_current_state_kbf_raw * 100.0) if np.isfinite(_ub_current_state_kbf_raw) else np.nan, 1)
+                _ub_true_kbf_raw = _kclean_num(row.get("UB True Talent K/BF"), np.nan)
+                _ub_true_kbf = _kclean_fmt((_ub_true_kbf_raw * 100.0) if np.isfinite(_ub_true_kbf_raw) else np.nan, 1)
+                _ub_decay_kbf_raw = _kclean_num(row.get("UB Recency Decay K/BF"), np.nan)
+                _ub_decay_kbf = _kclean_fmt((_ub_decay_kbf_raw * 100.0) if np.isfinite(_ub_decay_kbf_raw) else np.nan, 1)
+                _ub_blend_kbf_raw = _kclean_num(row.get("UB Blended K/BF"), np.nan)
+                _ub_blend_kbf = _kclean_fmt((_ub_blend_kbf_raw * 100.0) if np.isfinite(_ub_blend_kbf_raw) else np.nan, 1)
+                _ub_kbf_auth = _kclean_fmt((_kclean_num(row.get("UB KBF Authority"),0.0) or 0.0)*100.0,0)
+                _ub_blend_bf = _kclean_fmt(row.get("UB Blended BF"),1)
+                _ub_bf_auth = _kclean_fmt((_kclean_num(row.get("UB Workload Authority"),0.0) or 0.0)*100.0,0)
+                _ub_math_status = html.escape(str(row.get("UB Component Math Status") or "UNKNOWN"))
+                _ub_direction_status = html.escape(str(row.get("UB Persistent Direction Status") or "NO_HISTORY"))
+                _ub_direction_share_raw = _kclean_num(row.get("UB Persistent Direction Share"), np.nan)
+                _ub_direction_share = _kclean_fmt((_ub_direction_share_raw * 100.0) if np.isfinite(_ub_direction_share_raw) else np.nan, 0)
                 _ub_pitch_trend = _kclean_fmt(row.get("UB Pitch Trend Score"), 0)
                 _ub_pitch_trend_status = html.escape(str(row.get("UB Pitch Trend Status") or "NEUTRAL"))
                 _ub_pitch_kbf_adj_raw = _kclean_num(row.get("UB Pitch Trend KBF Adjustment"), np.nan)
@@ -53856,6 +53873,12 @@ def _kclean_render_player_cards(df, board=None, limit=None):
                       <div><span>Suppression escape</span><b>{_ub_escape}/100</b></div>
                       <div><span>False-OVER risk</span><b>{_ub_false}/100</b></div>
                       <div><span>Recent K acceleration</span><b>{_ub_recent}/100</b></div>
+                      <div><span>Current-state rebuild</span><b>{_ub_current_state} · {_ub_current_state_kbf}% K/BF · {_ub_current_state_auth}/100</b></div>
+                      <div><span>True talent → recency K/BF</span><b>{_ub_true_kbf}% → {_ub_decay_kbf}%</b></div>
+                      <div><span>Blended K/BF authority</span><b>{_ub_blend_kbf}% · {_ub_kbf_auth}% independent</b></div>
+                      <div><span>Blended BF authority</span><b>{_ub_blend_bf} BF · {_ub_bf_auth}% independent</b></div>
+                      <div><span>Component math</span><b>{_ub_math_status}</b></div>
+                      <div><span>Persistent direction audit</span><b>{_ub_direction_status} · {_ub_direction_share}%</b></div>
                       <div><span>Pitch trend</span><b>{_ub_pitch_trend_status} · {_ub_pitch_trend}/100</b></div>
                       <div><span>Pitch-trend K/BF adj</span><b>{_ub_pitch_kbf_adj} pp</b></div>
                       <div><span>K / 100 pitches L3/L10</span><b>{_ub_k100_l3} / {_ub_k100_l10}</b></div>
@@ -61358,8 +61381,8 @@ if render_batter_fs_tab is None:
 # Shadow challenger layered on the protected Merge V2.6.10 canonical control.
 # This block never mutates the Merge control table/board in place.
 # =============================================================================
-UNDEFEATED_BETA_VERSION = "UNDEFEATED_BETA_V1_3_PITCH_TREND_WORKLOAD_2026_08_15"
-SPORTS_ANALYSIS_BRAIN_VERSION = "SPORTS_ANALYSIS_BRAIN_V1_3_PITCH_TREND_WORKLOAD_2026_08_15"
+UNDEFEATED_BETA_VERSION = "UNDEFEATED_BETA_V1_5_COMPONENT_REBUILD"
+SPORTS_ANALYSIS_BRAIN_VERSION = "SPORTS_ANALYSIS_BRAIN_V1_5_COMPONENT_REBUILD_2026_08_16"
 UNDEFEATED_BETA_MODE = "SHADOW_CHALLENGER_NO_MERGE_PROMOTION"
 UB_BASELINE_CONTROL_VERSION = "MERGE_V2_6_10_PROTECTED_CONTROL"
 UB_DATA_DIR = os.path.join(STORAGE_DIR, "learning_data")
@@ -61372,13 +61395,13 @@ BRAIN_GRADE_FILE = os.path.join(UB_DATA_DIR, "sports_analysis_brain_grades.csv")
 UB_CONFIG_FILE = os.path.join(UB_DATA_DIR, "undefeated_beta_config.json")
 UB_RUNTIME_CACHE = {}
 UB_CONFIG = {
-    "merge_anchor_weight": 0.58,
-    "fixed_core_weight": 0.42,
-    "workload_escape_fixed_weight": 0.62,
-    "strong_stuff_fixed_weight": 0.62,
-    "elite_stuff_fixed_weight": 0.68,
-    "regime_fixed_weight": 0.58,
-    "structural_reconcile_max_move_k": 2.25,
+    "merge_anchor_weight": 0.35,
+    "fixed_core_weight": 0.65,
+    "workload_escape_fixed_weight": 0.72,
+    "strong_stuff_fixed_weight": 0.76,
+    "elite_stuff_fixed_weight": 0.86,
+    "regime_fixed_weight": 0.74,
+    "structural_reconcile_max_move_k": 3.25,
     "strong_core_max_gap_k": 0.45,
     "weak_core_max_gap_k": 0.55,
     "recent_starter_min_bf": 18.0,
@@ -61393,8 +61416,8 @@ UB_CONFIG = {
     "slate_imbalance_min_rows": 20,
     "high_line_over_threshold": 7.5,
     "high_line_over_min_edge": 1.00,
-    "ordinary_max_move_k": 0.90,
-    "strong_max_move_k": 1.50,
+    "ordinary_max_move_k": 1.50,
+    "strong_max_move_k": 2.50,
     "thin_edge_k": 0.20,
     "thin_probability": 0.55,
     "false_over_pitcher_k": 0.21,
@@ -61416,10 +61439,10 @@ UB_CONFIG = {
     "hist_55_over_prob_cap": 0.63,
     "hist_35_breakout_under_prob_cap": 0.60,
     # V1.3 Pitch Trend + Workload Authority. All thresholds are line-independent.
-    "pitch_trend_fixed_weight": 0.60,
-    "pitch_trend_elite_fixed_weight": 0.66,
-    "pitch_trend_max_kbf_up": 0.022,
-    "pitch_trend_max_kbf_down": 0.016,
+    "pitch_trend_fixed_weight": 0.72,
+    "pitch_trend_elite_fixed_weight": 0.84,
+    "pitch_trend_max_kbf_up": 0.020,
+    "pitch_trend_max_kbf_down": 0.020,
     "pitch_trend_support_score": 68.0,
     "pitch_trend_elite_score": 80.0,
     "pitch_capacity_min_pc": 78.0,
@@ -61430,6 +61453,43 @@ UB_CONFIG = {
     "damage_independence_fixed_weight": 0.62,
     "damage_independence_min_stuff_score": 68.0,
     "tto_retention_min_bf": 19.0,
+    # V1.4 independent current-state rebuild. These inputs are all pregame baseball-only.
+    "current_state_recent_weight_base": 0.45,
+    "current_state_recent_weight_strong": 0.60,
+    "current_state_recent_weight_elite": 0.70,
+    "current_state_strong_kbf": 0.245,
+    "current_state_elite_kbf": 0.275,
+    "current_state_strong_whiff": 0.285,
+    "current_state_elite_whiff": 0.310,
+    "current_state_strong_csw": 0.290,
+    "current_state_elite_csw": 0.305,
+    "current_state_strong_swstr": 0.125,
+    "current_state_elite_swstr": 0.145,
+    "current_state_strong_putaway": 0.235,
+    "current_state_elite_putaway": 0.270,
+    "current_state_absolute_kbf_boost_strong": 0.006,
+    "current_state_absolute_kbf_boost_elite": 0.012,
+    "current_state_absolute_kbf_penalty_weak": 0.008,
+    "current_state_weight_strong": 0.78,
+    "current_state_weight_elite": 0.90,
+    "current_state_weight_declining": 0.82,
+    # V1.5 component-level blend: BF and K/BF receive separate evidence authority.
+    "component_kbf_authority_normal": 0.65,
+    "component_kbf_authority_strong": 0.82,
+    "component_kbf_authority_elite": 0.92,
+    "component_kbf_authority_declining": 0.82,
+    "component_workload_authority_low": 0.25,
+    "component_workload_authority_medium": 0.50,
+    "component_workload_authority_high": 0.65,
+    "component_workload_authority_recent_starter": 0.78,
+    "component_workload_authority_mismatch": 0.88,
+    "component_workload_authority_confirmed_role": 0.92,
+    "component_data_quality_penalty": 0.10,
+    "component_low_data_quality_penalty": 0.15,
+    "recency_decay_half_life_starts": 3.0,
+    "recency_decay_max_starts": 10,
+    "persistent_direction_min_history": 4,
+    "persistent_direction_same_side_share": 0.80,
 }
 
 
@@ -61968,11 +62028,13 @@ def _ub_workload_distribution(p, row=None):
         if ip_avg is not None and ip_avg > 0 and len(recent_ip) < 3: recent_ip.append(ip_avg)
         if pc_avg is not None and pc_avg > 0 and len(recent_pc) < 3: recent_pc.append(pc_avg)
 
-    if recent_authority.get("bf_median") is not None:
+    # Do not duplicate the same recent starts through both game-log rows and summary medians.
+    # Summary authority is fallback-only when serialization is thin.
+    if len(recent_bf) < 3 and recent_authority.get("bf_median") is not None:
         recent_bf.append(float(recent_authority["bf_median"]))
-    if recent_authority.get("ip_median") is not None:
+    if len(recent_ip) < 3 and recent_authority.get("ip_median") is not None:
         recent_ip.append(float(recent_authority["ip_median"]))
-    if recent_authority.get("pitch_median") is not None:
+    if len(recent_pc) < 3 and recent_authority.get("pitch_median") is not None:
         recent_pc.append(float(recent_authority["pitch_median"]))
 
     recent_bf_med = float(np.median(recent_bf[:6])) if recent_bf else merge_bf
@@ -61981,10 +62043,13 @@ def _ub_workload_distribution(p, row=None):
     recent_ip_med = float(np.median(recent_ip[:6])) if recent_ip else merge_ip
     sample_n = max(len(recent_bf), int(recent_authority.get("recent_starter_games") or 0))
 
-    if sample_n >= 3:
-        center = 0.60 * merge_bf + 0.40 * recent_bf_med
+    # V1.5: this is the INDEPENDENT workload estimate. The component blend below
+    # performs the regularization back toward Merge, so pre-blending 60% Merge here
+    # would anchor workload twice and hide real BF/IP changes.
+    if sample_n >= 3 and not role.get("confirmed_short"):
+        center = recent_bf_med
     elif sample_n:
-        center = 0.80 * merge_bf + 0.20 * recent_bf_med
+        center = 0.65 * merge_bf + 0.35 * recent_bf_med
     else:
         center = merge_bf
 
@@ -61998,14 +62063,14 @@ def _ub_workload_distribution(p, row=None):
     if strong_recent and bf_gap >= float(UB_CONFIG["recent_workload_gap_bf"]):
         mismatch_score += min(70.0, 35.0 + bf_gap * 6.0)
         mismatch_reasons.append(f"recent starter BF median {recent_bf_med:.1f} vs Merge {merge_bf:.1f}")
-        center = max(center, 0.25 * merge_bf + 0.75 * recent_bf_med)
+        center = max(center, recent_bf_med)
         workload_escape = max(workload_escape, float(clamp(55.0 + bf_gap * 8.0, 0.0, 100.0)))
     elif sample_n >= 3 and not role.get("confirmed_short") and recent_bf_med >= merge_bf + 2.5:
         gap = recent_bf_med - merge_bf
         workload_escape = max(workload_escape, float(clamp(45.0 + gap * 10.0, 0.0, 100.0)))
-        center = max(center, 0.45 * merge_bf + 0.55 * recent_bf_med)
+        center = max(center, recent_bf_med)
     elif sample_n >= 3 and recent_bf_med <= merge_bf - 3.0:
-        center = 0.55 * merge_bf + 0.45 * recent_bf_med
+        center = 0.30 * merge_bf + 0.70 * recent_bf_med
 
     if strong_recent and ip_gap is not None and ip_gap >= float(UB_CONFIG["recent_workload_gap_ip"]):
         mismatch_score += min(35.0, 15.0 + ip_gap * 8.0)
@@ -62559,53 +62624,60 @@ def _ub_regime_profile(p, workload, recent):
 
 
 
-def _ub_escape_profile(p, row, recent, workload):
+def _ub_escape_profile(p, row, recent, workload, current_skill_kbf=None):
+    """Suppression escape with deduplicated evidence families.
+
+    It only controls how much a contact-heavy opponent is allowed to suppress an
+    already-supported pitcher K/BF. Correlated Whiff/CSW evidence counts as ONE
+    pitch-quality family for authority purposes. No sportsbook line is read.
+    """
     p = p or {}
     row = row or {}
-    pitcher_k = _ub_rate(_ub_first([p, row], ["pitcher_k_after_statcast", "pitcher_k", "Canonical Pitcher K%", "Pitcher K%"], LEAGUE_AVG_K), LEAGUE_AVG_K)
+    pitcher_k = _ub_rate(current_skill_kbf, None)
+    if pitcher_k is None:
+        pitcher_k = _ub_rate(_ub_first([p, row], ["pitcher_k_after_statcast", "pitcher_k", "Canonical Pitcher K%", "Pitcher K%"], LEAGUE_AVG_K), LEAGUE_AVG_K)
     whiff = _ub_rate(_ub_first([p, row], ["statcast_whiff", "Savant Custom Whiff%", "Official Savant Whiff%", "Whiff%", "APP100 Whiff%"], None), None)
     csw = _ub_rate(_ub_first([p, row], ["statcast_csw", "Savant Custom CSW%", "Official Savant CSW%", "CSW%", "APP100 CSW%"], None), None)
     pitch_factor = _ub_num(_ub_first([p, row], ["pitch_type_factor", "Pitch-Type Factor"], 1.0), 1.0)
     score = 0.0
-    support_count = 0
     reasons = []
+    families = set()
     if pitcher_k >= 0.28:
-        score += 25; support_count += 1; reasons.append(f"pitcher K {pitcher_k*100:.1f}%")
+        score += 25; families.add("K_SKILL"); reasons.append(f"pitcher K {pitcher_k*100:.1f}%")
     elif pitcher_k >= 0.255:
-        score += 16; support_count += 1; reasons.append(f"pitcher K {pitcher_k*100:.1f}%")
-    if whiff is not None and whiff >= 0.285:
-        score += 22; support_count += 1; reasons.append(f"Whiff {whiff*100:.1f}%")
-    elif whiff is not None and whiff >= 0.265:
-        score += 12
-    if csw is not None and csw >= 0.30:
-        score += 18; support_count += 1; reasons.append(f"CSW {csw*100:.1f}%")
-    elif csw is not None and csw >= 0.285:
-        score += 10
+        score += 16; families.add("K_SKILL"); reasons.append(f"pitcher K {pitcher_k*100:.1f}%")
+    # Whiff and CSW describe the same broad pitch-quality family for independence.
+    swing_points = 0.0
+    if whiff is not None:
+        swing_points += 14.0 if whiff >= 0.285 else 7.0 if whiff >= 0.265 else 0.0
+    if csw is not None:
+        swing_points += 11.0 if csw >= 0.30 else 6.0 if csw >= 0.285 else 0.0
+    if swing_points >= 12:
+        score += min(25.0, swing_points); families.add("PITCH_QUALITY")
+        reasons.append("supported Whiff/CSW pitch quality")
+    elif swing_points > 0:
+        score += swing_points
     if recent.get("status") in {"SUPPORTED", "STRONG"}:
-        score += 18; support_count += 1; reasons.append(f"recent skill {recent.get('status')}")
+        score += 18; families.add("RECENT_K_SKILL"); reasons.append(f"recent skill {recent.get('status')}")
     if pitch_factor >= 1.015:
-        score += 10; support_count += 1; reasons.append(f"arsenal factor {pitch_factor:.3f}")
+        score += 10; families.add("ARSENAL"); reasons.append(f"arsenal factor {pitch_factor:.3f}")
     if workload.get("confidence") == "HIGH" and workload.get("bf_p50", 0) >= 20.5:
-        score += 7; support_count += 1; reasons.append("stable BF opportunity")
+        score += 7; families.add("WORKLOAD"); reasons.append("stable BF opportunity")
     score = float(clamp(score, 0.0, 100.0))
+    support_count = len(families)
     if support_count < 3:
-        alpha = 1.0
-        skill_floor_ratio = None
+        alpha = 1.0; skill_floor_ratio = None
     elif score >= float(UB_CONFIG["elite_escape_score"]):
-        alpha = 0.45
-        skill_floor_ratio = 0.93
+        alpha = 0.45; skill_floor_ratio = 0.93
     elif score >= float(UB_CONFIG["strong_escape_score"]):
-        alpha = 0.62
-        skill_floor_ratio = 0.89
+        alpha = 0.62; skill_floor_ratio = 0.89
     else:
-        alpha = 0.82
-        skill_floor_ratio = 0.86
+        alpha = 0.82; skill_floor_ratio = 0.86
     return {
-        "score": round(score, 1), "support_count": support_count, "alpha": alpha,
-        "skill_floor_ratio": skill_floor_ratio, "reasons": reasons,
+        "score": round(score, 1), "support_count": support_count, "support_families": sorted(families),
+        "alpha": alpha, "skill_floor_ratio": skill_floor_ratio, "reasons": reasons,
         "pitcher_k": pitcher_k, "whiff": whiff, "csw": csw
     }
-
 
 
 def _ub_conversion_profile(p, row, skill_kbf, recent):
@@ -62630,77 +62702,230 @@ def _ub_conversion_profile(p, row, skill_kbf, recent):
 
 
 
-def _ub_fixed_core(p, row, workload, recent, regime):
-    p = p or {}
-    row = row or {}
-    base_skill = _ub_rate(_ub_first([p, row], ["pitcher_k_after_statcast", "pitcher_k_after_elite", "pitcher_k_blend_base", "Canonical Pitcher K%"], None), None)
-    if base_skill is None:
-        base_skill = _ub_rate(_ub_first([p, row], ["pitcher_k", "Pitcher K%"], LEAGUE_AVG_K), LEAGUE_AVG_K)
-    recent_l5 = recent.get("l5", {}).get("rate")
-    recent_bf = recent.get("l5", {}).get("BF") or 0.0
-    recent_weight = min(0.28, max(0.0, recent_bf / (recent_bf + 120.0) * 0.50)) if recent_l5 is not None else 0.0
-    if regime.get("state") in {"RETURN_FROM_TJ", "RETURN_FROM_IL", "PITCH_COUNT_RAMP", "RECENT_CHANGE", "VELOCITY_SHIFT"} and recent_l5 is not None and recent.get("l5", {}).get("starts", 0) >= 2:
-        recent_weight = max(recent_weight, min(0.46, recent_bf / (recent_bf + 70.0) * 0.62))
-    skill_kbf = base_skill if recent_l5 is None else base_skill * (1.0 - recent_weight) + recent_l5 * recent_weight
-    pitch_factor = _ub_num(_ub_first([p, row], ["pitch_type_factor", "Pitch-Type Factor"], 1.0), 1.0)
-    pitch_factor = float(clamp(pitch_factor, 0.97, 1.03))
-    skill_kbf *= pitch_factor
-    if recent.get("status") == "STRONG":
-        skill_kbf += 0.008
-    elif recent.get("score", 50.0) <= 35:
-        skill_kbf -= 0.006
-    pre_pitch_trend_skill = float(clamp(skill_kbf, 0.08, 0.45))
 
-    pitch_trend = _ub_pitch_trend_profile(p, row, recent, workload, pre_pitch_trend_skill)
-    skill_kbf = pre_pitch_trend_skill + float(pitch_trend.get("kbf_adjustment") or 0.0)
-    skill_kbf = float(clamp(skill_kbf, 0.08, 0.45))
+def _ub_independent_true_talent_kbf(p, row, fallback=None):
+    """Build a true-talent K/BF prior without using the final Merge projection.
 
-    lineup = _ub_lineup_profile(p, row, workload.get("bf_p50", DEFAULT_BF))
-    escape = _ub_escape_profile(p, row, recent, workload)
-    effective_rates = []
-    matchup_rates = []
-    no_escape_rates = []
-    pretrend_matchup_rates = []
-    pretrend_no_escape_rates = []
-    for batter_rate in lineup.get("sequence") or [lineup.get("exposure_rate", LEAGUE_AVG_K)]:
-        no_escape_rates.append(float(calculate_log5_k_rate(skill_kbf, batter_rate)))
-        pretrend_no_escape_rates.append(float(calculate_log5_k_rate(pre_pitch_trend_skill, batter_rate)))
-        effective = batter_rate
-        if batter_rate < LEAGUE_AVG_K and escape.get("support_count", 0) >= 3:
-            alpha = escape.get("alpha", 1.0)
-            effective = LEAGUE_AVG_K + (batter_rate - LEAGUE_AVG_K) * alpha
-        effective = float(clamp(effective, 0.04, 0.55))
-        effective_rates.append(effective)
-        matchup_rates.append(float(calculate_log5_k_rate(skill_kbf, effective)))
-        pretrend_matchup_rates.append(float(calculate_log5_k_rate(pre_pitch_trend_skill, effective)))
-    matchup_kbf_no_escape = float(np.mean(no_escape_rates)) if no_escape_rates else skill_kbf
-    matchup_kbf = float(np.mean(matchup_rates)) if matchup_rates else skill_kbf
-    pretrend_matchup_kbf_no_escape = float(np.mean(pretrend_no_escape_rates)) if pretrend_no_escape_rates else pre_pitch_trend_skill
-    pretrend_matchup_kbf = float(np.mean(pretrend_matchup_rates)) if pretrend_matchup_rates else pre_pitch_trend_skill
+    Raw/season Savant and pitcher K% fields are preferred. Processed canonical K%
+    is fallback-only so the challenger does not simply inherit the Merge center.
+    """
+    p = p or {}; row = row or {}
+    candidates = []
+    def add(source, keys, weight):
+        value = _ub_rate(_ub_first([p, row], keys, None), None)
+        if value is not None and 0.08 <= value <= 0.45:
+            candidates.append((float(value), float(weight), source))
+    add("SAVANT_SEASON_K", ["savant_k_pct", "Official Savant K%", "Savant K%", "Statcast K%"], 1.00)
+    add("RAW_PITCHER_K", ["pitcher_k", "Pitcher K%", "Season K%", "K%"], 0.95)
+    add("RAW_MODEL_SKILL", ["pitcher_k_blend_base", "Pitcher K Blend Base"], 0.55)
+    if candidates:
+        denom = sum(w for _, w, _ in candidates) or 1.0
+        value = sum(v*w for v,w,_ in candidates) / denom
+        return {"kbf": float(clamp(value,0.08,0.45)), "sources": [src for _,_,src in candidates], "fallback_used": False}
+    fb = _ub_rate(fallback, None)
+    if fb is None:
+        fb = _ub_rate(_ub_first([p,row], ["pitcher_k_after_statcast", "pitcher_k_after_elite", "Canonical Pitcher K%"], LEAGUE_AVG_K), LEAGUE_AVG_K)
+    return {"kbf": float(clamp(fb,0.08,0.45)), "sources": ["CANONICAL_FALLBACK"], "fallback_used": True}
 
-    floor_ratio = escape.get("skill_floor_ratio")
-    pre_floor_matchup = matchup_kbf
-    pretrend_pre_floor_matchup = pretrend_matchup_kbf
-    if floor_ratio is not None and escape.get("support_count", 0) >= 3:
-        matchup_kbf = max(matchup_kbf, skill_kbf * float(floor_ratio))
-        pretrend_matchup_kbf = max(pretrend_matchup_kbf, pre_pitch_trend_skill * float(floor_ratio))
-    suppression_floor_delta = matchup_kbf - pre_floor_matchup
 
-    bf_center = float(workload.get("bf_p50", DEFAULT_BF))
-    pre_pitch_trend_projection = pretrend_matchup_kbf * bf_center
-    fixed_projection = matchup_kbf * bf_center
+def _ub_recency_decay_kbf(p):
+    """Event-level pooled K/BF with start-recency decay; no overlapping-window double count."""
+    games = _ub_history_games(p)[:int(UB_CONFIG.get("recency_decay_max_starts",10))]
+    half_life = max(1.0, float(UB_CONFIG.get("recency_decay_half_life_starts",3.0)))
+    wk = wbf = raw_bf = raw_k = 0.0
+    starts = 0
+    rows = []
+    for i, g in enumerate(games):
+        k = _ub_num((g or {}).get("Ks"), None); bf = _ub_num((g or {}).get("BF"), None)
+        if k is None or bf is None or bf <= 0: continue
+        w = 0.5 ** (float(i) / half_life)
+        wk += w * k; wbf += w * bf; raw_k += k; raw_bf += bf; starts += 1
+        rows.append({"index":i,"K":k,"BF":bf,"weight":round(w,4)})
     return {
-        "base_skill_kbf": base_skill, "pre_pitch_trend_skill_kbf": pre_pitch_trend_skill,
-        "skill_kbf": skill_kbf, "recent_weight": recent_weight, "pitch_trend": pitch_trend,
-        "lineup": lineup, "escape": escape, "effective_lineup_rate": float(np.mean(effective_rates)) if effective_rates else lineup.get("exposure_rate"),
-        "pre_pitch_trend_matchup_kbf_no_escape": pretrend_matchup_kbf_no_escape, "pre_pitch_trend_matchup_kbf": pretrend_matchup_kbf,
-        "matchup_kbf_no_escape": matchup_kbf_no_escape, "matchup_kbf_pre_floor": pre_floor_matchup,
-        "matchup_kbf": matchup_kbf, "suppression_floor_delta_kbf": suppression_floor_delta,
-        "pre_pitch_trend_projection": float(pre_pitch_trend_projection), "projection": float(fixed_projection), "matchup_application_count": 1,
-        "mode": "PER_BATTER_SINGLE_LOG5" if lineup.get("sample", 0) >= 5 else "TEAM_SINGLE_LOG5_FALLBACK",
+        "rate": None if wbf <= 0 else float(wk/wbf), "weighted_bf": wbf,
+        "raw_bf": raw_bf, "raw_k": raw_k, "starts": starts, "rows": rows
     }
 
 
+def _ub_current_state_skill_profile(p, row, recent, workload, base_skill):
+    """Independent current-state K/BF rebuild with grouped evidence ownership.
+
+    Absolute current stuff and recent K/BF can move the biological center even when
+    there is no upward trend. Correlated Whiff/SwStr values are one SWING_MISS family.
+    No sportsbook line or final Merge K projection is read here.
+    """
+    p = p or {}; row = row or {}; recent = recent or {}; workload = workload or {}
+    history = p.get("k_history_context_v256") if isinstance(p.get("k_history_context_v256"), dict) else {}
+    prior = _ub_independent_true_talent_kbf(p,row,fallback=base_skill)
+    base = float(prior.get("kbf") or LEAGUE_AVG_K)
+    decay = _ub_recency_decay_kbf(p)
+    recent_consensus = decay.get("rate")
+
+    def hr(*keys):
+        for key in keys:
+            val = _ub_rate(history.get(key), None)
+            if val is not None: return val
+        return None
+    whiff = hr("L5_Whiff_pct","L3_Whiff_pct") or _ub_rate(_ub_first([p,row],["statcast_whiff","Savant Custom Whiff%","Official Savant Whiff%","Whiff%","APP100 Whiff%"],None),None)
+    csw = hr("L5_CSW_pct","L3_CSW_pct") or _ub_rate(_ub_first([p,row],["statcast_csw","Savant Custom CSW%","Official Savant CSW%","CSW%","APP100 CSW%"],None),None)
+    swstr = hr("L5_swinging_strike_pct","L3_swinging_strike_pct")
+    putaway = hr("L5_two_strike_putaway_pct") or _ub_rate(_ub_first([p,row],["two_strike_putaway_rate","statcast_putaway","putaway_pct","PutAway%","APP85 PutAway Rate"],None),None)
+
+    support=[]; risk=[]; elite=[]
+    if recent_consensus is not None:
+        if recent_consensus >= float(UB_CONFIG["current_state_elite_kbf"]): support.append("RECENT_KBF"); elite.append("RECENT_KBF")
+        elif recent_consensus >= float(UB_CONFIG["current_state_strong_kbf"]): support.append("RECENT_KBF")
+        elif recent_consensus <= 0.175: risk.append("RECENT_KBF")
+    # One swing-miss family: Whiff and SwStr cannot count as two independent votes.
+    swing_elite = bool((whiff is not None and whiff >= float(UB_CONFIG["current_state_elite_whiff"])) or (swstr is not None and swstr >= float(UB_CONFIG["current_state_elite_swstr"])))
+    swing_strong = bool((whiff is not None and whiff >= float(UB_CONFIG["current_state_strong_whiff"])) or (swstr is not None and swstr >= float(UB_CONFIG["current_state_strong_swstr"])))
+    swing_weak = bool((whiff is not None and whiff <= 0.205) and (swstr is None or swstr <= 0.095))
+    if swing_elite: support.append("SWING_MISS"); elite.append("SWING_MISS")
+    elif swing_strong: support.append("SWING_MISS")
+    elif swing_weak: risk.append("SWING_MISS")
+    if csw is not None:
+        if csw >= float(UB_CONFIG["current_state_elite_csw"]): support.append("CSW_COMMAND"); elite.append("CSW_COMMAND")
+        elif csw >= float(UB_CONFIG["current_state_strong_csw"]): support.append("CSW_COMMAND")
+        elif csw <= 0.255: risk.append("CSW_COMMAND")
+    if putaway is not None:
+        if putaway >= float(UB_CONFIG["current_state_elite_putaway"]): support.append("PUTAWAY"); elite.append("PUTAWAY")
+        elif putaway >= float(UB_CONFIG["current_state_strong_putaway"]): support.append("PUTAWAY")
+        elif putaway <= 0.155: risk.append("PUTAWAY")
+    support=list(dict.fromkeys(support)); risk=list(dict.fromkeys(risk)); elite=list(dict.fromkeys(elite))
+    if len(elite)>=2 and len(support)>=3: state="SUSTAINED_ELITE"
+    elif len(support)>=2: state="STRONG_CURRENT"
+    elif len(risk)>=2: state="DECLINING_CURRENT"
+    else: state="NORMAL"
+
+    sample_weight = 0.0
+    if recent_consensus is not None:
+        raw_bf=float(decay.get("raw_bf") or 0.0)
+        sample_strength=float(clamp(raw_bf/70.0,0.0,1.0))
+        sample_weight=min(float(UB_CONFIG["current_state_recent_weight_base"]), raw_bf/(raw_bf+90.0)*0.80)
+        target = 0.0
+        if state=="STRONG_CURRENT": target=float(UB_CONFIG["current_state_recent_weight_strong"])
+        elif state=="SUSTAINED_ELITE": target=float(UB_CONFIG["current_state_recent_weight_elite"])
+        elif state=="DECLINING_CURRENT": target=float(UB_CONFIG["current_state_recent_weight_strong"])
+        if target>0:
+            sample_weight=max(sample_weight,target*sample_strength)
+    kbf=base if recent_consensus is None else base*(1.0-sample_weight)+float(recent_consensus)*sample_weight
+
+    # Absolute level adjustments are grouped and capped; trend lives in _ub_pitch_trend_profile.
+    level_adj=0.0
+    if "SWING_MISS" in support: level_adj += 0.010 if "SWING_MISS" in elite else 0.005
+    if "CSW_COMMAND" in support: level_adj += 0.007 if "CSW_COMMAND" in elite else 0.0035
+    if "PUTAWAY" in support: level_adj += 0.005 if "PUTAWAY" in elite else 0.0025
+    if "SWING_MISS" in risk: level_adj -= 0.007
+    if "CSW_COMMAND" in risk: level_adj -= 0.005
+    if "PUTAWAY" in risk: level_adj -= 0.004
+    level_adj=float(clamp(level_adj,-0.018,0.024))
+    kbf=float(clamp(kbf+level_adj,0.08,0.45))
+    authority=50.0
+    if state=="STRONG_CURRENT": authority=82.0
+    elif state=="SUSTAINED_ELITE": authority=94.0
+    elif state=="DECLINING_CURRENT": authority=82.0
+    elif len(support)>=1 or len(risk)>=1: authority=66.0
+    reasons=[]
+    if recent_consensus is not None: reasons.append(f"recency-decay K/BF {recent_consensus*100:.1f}%")
+    if whiff is not None: reasons.append(f"current Whiff {whiff*100:.1f}%")
+    if csw is not None: reasons.append(f"current CSW {csw*100:.1f}%")
+    if swstr is not None: reasons.append(f"current SwStr {swstr*100:.1f}%")
+    if putaway is not None: reasons.append(f"current PutAway {putaway*100:.1f}%")
+    return {
+        "kbf":kbf,"state":state,"authority":authority,"recent_consensus_kbf":recent_consensus,
+        "recent_weight":sample_weight,"absolute_adjustment_kbf":level_adj,
+        "support_families":support,"risk_families":risk,"support_count":len(support),"risk_count":len(risk),
+        "whiff":whiff,"csw":csw,"swstr":swstr,"putaway":putaway,"reasons":reasons,
+        "true_talent_kbf":base,"true_talent_sources":prior.get("sources"),"true_talent_fallback":prior.get("fallback_used"),
+        "recency_decay_weighted_bf":decay.get("weighted_bf"),"recency_decay_raw_bf":decay.get("raw_bf"),"recency_decay_starts":decay.get("starts")
+    }
+
+
+def _ub_persistent_direction_audit(pitcher_id=None, pitcher_name=None, current_line=None, independent_projection=None):
+    """Read-only same-side history audit. Never changes the biological projection."""
+    result = {"status":"NO_HISTORY", "sample":0, "same_side_share":None, "dominant_side":"", "independent_side":"", "conflict":False}
+    try:
+        path = Path(UB_SNAPSHOT_FILE)
+        if not path.exists(): return result
+        hist = pd.read_csv(path)
+        if hist.empty: return result
+        if pitcher_id is not None and "Pitcher ID" in hist.columns:
+            match = hist[hist["Pitcher ID"].astype(str) == str(pitcher_id)]
+        elif pitcher_name and "Pitcher" in hist.columns:
+            match = hist[hist["Pitcher"].astype(str).str.lower() == str(pitcher_name).lower()]
+        else:
+            return result
+        if match.empty: return result
+        if "Snapshot Timestamp" in match.columns:
+            match = match.sort_values("Snapshot Timestamp", ascending=False)
+        if "Snapshot Stage" in match.columns:
+            preferred = match[match["Snapshot Stage"].astype(str).str.upper().isin(["FINAL_PREGAME","CONFIRMED_LINEUP","EXPECTED_LINEUP"])]
+            if not preferred.empty: match = preferred
+        sides = [s for s in match.get("Undefeated Beta Side", pd.Series(dtype=str)).astype(str).str.upper().tolist() if s in {"OVER","UNDER"}][:6]
+        if len(sides) < int(UB_CONFIG["persistent_direction_min_history"]):
+            result.update({"status":"THIN_HISTORY", "sample":len(sides)})
+            return result
+        over = sum(s == "OVER" for s in sides); under = sum(s == "UNDER" for s in sides)
+        dominant = "OVER" if over >= under else "UNDER"
+        share = max(over, under) / max(len(sides), 1)
+        indep_side = ""
+        if current_line is not None and independent_projection is not None:
+            indep_side = "OVER" if float(independent_projection) > float(current_line) else "UNDER" if float(independent_projection) < float(current_line) else "PUSH"
+        conflict = bool(share >= float(UB_CONFIG["persistent_direction_same_side_share"]) and indep_side in {"OVER","UNDER"} and indep_side != dominant)
+        status = "PERSISTENT_DIRECTION_CONFLICT" if conflict else "PERSISTENT_DIRECTION" if share >= float(UB_CONFIG["persistent_direction_same_side_share"]) else "MIXED_HISTORY"
+        result.update({"status":status, "sample":len(sides), "same_side_share":round(share,3), "dominant_side":dominant, "independent_side":indep_side, "conflict":conflict})
+        return result
+    except Exception as exc:
+        result["status"] = "AUDIT_ERROR"
+        result["error"] = str(exc)[:180]
+        return result
+
+def _ub_fixed_core(p, row, workload, recent, regime):
+    p = p or {}; row = row or {}
+    canonical_fallback = _ub_rate(_ub_first([p,row],["pitcher_k_after_statcast","pitcher_k_after_elite","pitcher_k_blend_base","Canonical Pitcher K%"],None),None)
+    prior = _ub_independent_true_talent_kbf(p,row,fallback=canonical_fallback)
+    base_skill = float(prior.get("kbf") or LEAGUE_AVG_K)
+    current_state = _ub_current_state_skill_profile(p,row,recent,workload,base_skill)
+    recent_weight=float(current_state.get("recent_weight") or 0.0)
+    skill_kbf=float(current_state.get("kbf") or base_skill)
+    pitch_factor=_ub_num(_ub_first([p,row],["pitch_type_factor","Pitch-Type Factor"],1.0),1.0)
+    pitch_factor=float(clamp(pitch_factor,0.96,1.04))
+    skill_kbf*=pitch_factor
+    # Trend is a separate change signal; current-state owns absolute levels.
+    pre_pitch_trend_skill=float(clamp(skill_kbf,0.08,0.45))
+    pitch_trend=_ub_pitch_trend_profile(p,row,recent,workload,pre_pitch_trend_skill)
+    skill_kbf=float(clamp(pre_pitch_trend_skill+float(pitch_trend.get("kbf_adjustment") or 0.0),0.08,0.45))
+    lineup=_ub_lineup_profile(p,row,workload.get("bf_p50",DEFAULT_BF))
+    escape=_ub_escape_profile(p,row,recent,workload,current_skill_kbf=skill_kbf)
+    effective_rates=[]; matchup_rates=[]; no_escape_rates=[]; pretrend_matchup_rates=[]; pretrend_no_escape_rates=[]
+    for batter_rate in lineup.get("sequence") or [lineup.get("exposure_rate",LEAGUE_AVG_K)]:
+        no_escape_rates.append(float(calculate_log5_k_rate(skill_kbf,batter_rate)))
+        pretrend_no_escape_rates.append(float(calculate_log5_k_rate(pre_pitch_trend_skill,batter_rate)))
+        effective=batter_rate
+        if batter_rate < LEAGUE_AVG_K and escape.get("support_count",0)>=3:
+            alpha=escape.get("alpha",1.0); effective=LEAGUE_AVG_K+(batter_rate-LEAGUE_AVG_K)*alpha
+        effective=float(clamp(effective,0.04,0.55)); effective_rates.append(effective)
+        matchup_rates.append(float(calculate_log5_k_rate(skill_kbf,effective)))
+        pretrend_matchup_rates.append(float(calculate_log5_k_rate(pre_pitch_trend_skill,effective)))
+    matchup_kbf_no_escape=float(np.mean(no_escape_rates)) if no_escape_rates else skill_kbf
+    matchup_kbf=float(np.mean(matchup_rates)) if matchup_rates else skill_kbf
+    pretrend_matchup_kbf_no_escape=float(np.mean(pretrend_no_escape_rates)) if pretrend_no_escape_rates else pre_pitch_trend_skill
+    pretrend_matchup_kbf=float(np.mean(pretrend_matchup_rates)) if pretrend_matchup_rates else pre_pitch_trend_skill
+    floor_ratio=escape.get("skill_floor_ratio"); pre_floor_matchup=matchup_kbf
+    if floor_ratio is not None and escape.get("support_count",0)>=3:
+        matchup_kbf=max(matchup_kbf,skill_kbf*float(floor_ratio)); pretrend_matchup_kbf=max(pretrend_matchup_kbf,pre_pitch_trend_skill*float(floor_ratio))
+    suppression_floor_delta=matchup_kbf-pre_floor_matchup
+    bf_center=float(workload.get("bf_p50",DEFAULT_BF))
+    return {
+        "base_skill_kbf":base_skill,"true_talent_prior":prior,"pre_pitch_trend_skill_kbf":pre_pitch_trend_skill,
+        "skill_kbf":skill_kbf,"recent_weight":recent_weight,"current_state":current_state,"pitch_trend":pitch_trend,
+        "lineup":lineup,"escape":escape,"effective_lineup_rate":float(np.mean(effective_rates)) if effective_rates else lineup.get("exposure_rate"),
+        "pre_pitch_trend_matchup_kbf_no_escape":pretrend_matchup_kbf_no_escape,"pre_pitch_trend_matchup_kbf":pretrend_matchup_kbf,
+        "matchup_kbf_no_escape":matchup_kbf_no_escape,"matchup_kbf_pre_floor":pre_floor_matchup,"matchup_kbf":matchup_kbf,
+        "suppression_floor_delta_kbf":suppression_floor_delta,"pre_pitch_trend_projection":float(pretrend_matchup_kbf*bf_center),
+        "projection":float(matchup_kbf*bf_center),"matchup_application_count":1,
+        "mode":"PER_BATTER_SINGLE_LOG5" if lineup.get("sample",0)>=5 else "TEAM_SINGLE_LOG5_FALLBACK"
+    }
 
 
 def _ub_false_over_profile(p, row, fixed, recent, workload, line, projection):
@@ -63137,6 +63362,87 @@ def _brain_profile(p, row, ub):
 
 
 
+def _ub_component_blend_profile(merge_projection, fixed, workload, recent, regime, data_quality):
+    """Blend BF and K/BF separately so the final K projection is mathematically coherent.
+
+    This is the V1.5 core change. Merge is a control prior, not the arithmetic center of
+    every adjustment. Workload evidence decides BF authority; current strikeout evidence
+    decides K/BF authority. The sportsbook line is not an input.
+    """
+    merge_projection=float(merge_projection); fixed=fixed or {}; workload=workload or {}; recent=recent or {}; regime=regime or {}
+    merge_bf=max(1.0,float(workload.get("merge_bf") or workload.get("bf_p50") or DEFAULT_BF))
+    independent_bf=max(1.0,float(workload.get("bf_p50") or merge_bf))
+    merge_kbf=merge_projection/merge_bf
+    merge_component_sane=bool(0.06 <= merge_kbf <= 0.50)
+    independent_kbf=float(fixed.get("matchup_kbf") or fixed.get("skill_kbf") or LEAGUE_AVG_K)
+    current=fixed.get("current_state") or {}; state=str(current.get("state") or "NORMAL")
+    if state=="SUSTAINED_ELITE": kbf_auth=float(UB_CONFIG["component_kbf_authority_elite"])
+    elif state=="STRONG_CURRENT": kbf_auth=float(UB_CONFIG["component_kbf_authority_strong"])
+    elif state=="DECLINING_CURRENT": kbf_auth=float(UB_CONFIG["component_kbf_authority_declining"])
+    else: kbf_auth=float(UB_CONFIG["component_kbf_authority_normal"])
+    trend=fixed.get("pitch_trend") or {}; escape=fixed.get("escape") or {}
+    if trend.get("score",0)>=float(UB_CONFIG["pitch_trend_elite_score"]) and trend.get("independent_support_families",0)>=2: kbf_auth=max(kbf_auth,0.88)
+    elif trend.get("score",0)>=float(UB_CONFIG["pitch_trend_support_score"]) and trend.get("independent_support_families",0)>=1: kbf_auth=max(kbf_auth,0.78)
+    if escape.get("score",0)>=float(UB_CONFIG["elite_escape_score"]) and escape.get("support_count",0)>=3: kbf_auth=max(kbf_auth,0.90)
+    elif escape.get("score",0)>=float(UB_CONFIG["strong_escape_score"]) and escape.get("support_count",0)>=3: kbf_auth=max(kbf_auth,0.82)
+    if not merge_component_sane: kbf_auth=max(kbf_auth,0.92)
+    if data_quality < 65: kbf_auth-=float(UB_CONFIG["component_low_data_quality_penalty"])
+    elif data_quality < 78: kbf_auth-=float(UB_CONFIG["component_data_quality_penalty"])
+    kbf_auth=float(clamp(kbf_auth,0.35,0.95))
+
+    conf=str(workload.get("confidence") or "LOW")
+    bf_auth=float(UB_CONFIG["component_workload_authority_high"] if conf=="HIGH" else UB_CONFIG["component_workload_authority_medium"] if conf=="MEDIUM" else UB_CONFIG["component_workload_authority_low"])
+    if workload.get("recent_starter_authority"): bf_auth=max(bf_auth,float(UB_CONFIG["component_workload_authority_recent_starter"]))
+    if workload.get("workload_mismatch_score",0)>=65: bf_auth=max(bf_auth,float(UB_CONFIG["component_workload_authority_mismatch"]))
+    if workload.get("role_authority")=="CURRENT_CONFIRMED_ROLE": bf_auth=max(bf_auth,float(UB_CONFIG["component_workload_authority_confirmed_role"]))
+    bf_auth=float(clamp(bf_auth,0.15,0.95))
+
+    blended_bf=merge_bf*(1.0-bf_auth)+independent_bf*bf_auth
+    blended_kbf=merge_kbf*(1.0-kbf_auth)+independent_kbf*kbf_auth
+    raw=blended_bf*blended_kbf
+
+    # Deduplicated structural-family ledger controls movement cap only; it does not add K twice.
+    raw_families=[]
+    norm_map={"RECENT_KBF":"K_SKILL","K_SKILL":"K_SKILL","RECENT_K_SKILL":"K_SKILL","SWING_MISS":"PITCH_QUALITY","PITCH_QUALITY":"PITCH_QUALITY","CSW_COMMAND":"PITCH_QUALITY","PUTAWAY":"COMMAND_CONVERSION","COMMAND_PUTAWAY":"COMMAND_CONVERSION","PITCH_MIX_SHIFT":"ARSENAL","ARSENAL":"ARSENAL","K_EFFICIENCY":"K_EFFICIENCY","TTO_RETENTION":"TTO","WORKLOAD":"WORKLOAD"}
+    for fam in current.get("support_families") or []: raw_families.append(norm_map.get(fam,fam))
+    for fam in trend.get("support_families") or []: raw_families.append(norm_map.get(fam,fam))
+    for fam in escape.get("support_families") or []: raw_families.append(norm_map.get(fam,fam))
+    if workload.get("workload_mismatch_score",0)>=45 or workload.get("recent_starter_authority"): raw_families.append("WORKLOAD")
+    if regime.get("state") not in {None,"","NORMAL"}: raw_families.append("REGIME")
+    if (fixed.get("lineup") or {}).get("true_hand_split"): raw_families.append("LINEUP_MATCHUP")
+    counts={}
+    for fam in raw_families: counts[fam]=counts.get(fam,0)+1
+    unique=sorted(counts); duplicate=any(v>1 for v in counts.values())
+    strong=bool(len(unique)>=3 or state in {"SUSTAINED_ELITE","STRONG_CURRENT","DECLINING_CURRENT"})
+    cap=float(UB_CONFIG["strong_max_move_k"] if strong else UB_CONFIG["ordinary_max_move_k"])
+    if workload.get("workload_mismatch_score",0)>=65 or not merge_component_sane: cap=max(cap,float(UB_CONFIG["structural_reconcile_max_move_k"]))
+    capped=merge_projection+float(clamp(raw-merge_projection,-cap,cap))
+    coh_work=dict(workload); coh_work["bf_p50"]=blended_bf
+    coherence=_ub_projection_coherence_adjustment(merge_projection,capped,fixed,recent,coh_work,regime)
+    projection=float(coherence.get("projection",capped))
+
+    # Exact additive attribution: these pieces sum to final - Merge.
+    pretrend=float(fixed.get("pre_pitch_trend_matchup_kbf_no_escape") or independent_kbf)
+    posttrend=float(fixed.get("matchup_kbf_no_escape") or independent_kbf)
+    with_escape=float(fixed.get("matchup_kbf") or independent_kbf)
+    skill_delta=merge_bf*kbf_auth*(pretrend-merge_kbf)
+    pitch_delta=merge_bf*kbf_auth*(posttrend-pretrend)
+    suppression_delta=merge_bf*kbf_auth*(with_escape-posttrend)
+    workload_delta=blended_kbf*(blended_bf-merge_bf)
+    pre_guard=merge_projection+skill_delta+pitch_delta+suppression_delta+workload_delta
+    guard_adjustment=projection-pre_guard
+    residual=(projection-merge_projection)-(skill_delta+pitch_delta+suppression_delta+workload_delta+guard_adjustment)
+    return {
+        "projection":projection,"raw_component_projection":raw,"merge_bf":merge_bf,"independent_bf":independent_bf,"blended_bf":blended_bf,
+        "merge_implied_kbf":merge_kbf,"merge_component_sane":merge_component_sane,"independent_kbf":independent_kbf,"blended_kbf":blended_kbf,
+        "kbf_authority":kbf_auth,"workload_authority":bf_auth,"movement_cap":cap,
+        "skill_matchup_delta":skill_delta,"pitch_trend_delta":pitch_delta,"suppression_delta":suppression_delta,"workload_delta":workload_delta,
+        "guard_adjustment":guard_adjustment,"attribution_residual":residual,"coherence":coherence,
+        "signal_families":unique,"signal_family_counts":counts,"duplicate_signal_flag":duplicate,
+        "math_status":"PASS" if abs(residual)<=1e-6 else "FAIL"
+    }
+
+
 def _ub_build_row(row, p):
     row = dict(row or {}); p = p or {}
     merge_projection = _ub_num(_ub_first([row, p], ["Canonical Final K Projection", "hybrid_consensus_projection", "baseball_projection", "projection"], None), None)
@@ -63150,49 +63456,26 @@ def _ub_build_row(row, p):
     pitch_trend = fixed.get("pitch_trend") or {}
     damage_independence = _ub_damage_k_independence_profile(p, row, fixed, recent)
     structural_delta = fixed["projection"] - merge_projection
-    weight = float(UB_CONFIG["fixed_core_weight"])
-    escape_support = int(fixed.get("escape", {}).get("support_count", 0) or 0)
-    escape_score = float(fixed.get("escape", {}).get("score", 0) or 0)
-    if workload.get("workload_escape_score", 0) >= 65 and not _ub_role_profile(p, row).get("confirmed_short"):
-        weight = max(weight, float(UB_CONFIG["workload_escape_fixed_weight"]))
-    if escape_support >= 3 and escape_score >= float(UB_CONFIG["strong_escape_score"]):
-        weight = max(weight, float(UB_CONFIG["strong_stuff_fixed_weight"]))
-    if escape_support >= 4 and escape_score >= float(UB_CONFIG["elite_escape_score"]):
-        weight = max(weight, float(UB_CONFIG["elite_stuff_fixed_weight"]))
-    if regime.get("state") != "NORMAL" and recent.get("support_families", 0) >= 1:
-        weight = max(weight, float(UB_CONFIG["regime_fixed_weight"]))
-    if workload.get("workload_mismatch_score", 0) >= 65:
-        weight = max(weight, float(UB_CONFIG["elite_stuff_fixed_weight"]))
-    if pitch_trend.get("score", 0) >= float(UB_CONFIG["pitch_trend_support_score"]) and pitch_trend.get("independent_support_families", 0) >= 1:
-        weight = max(weight, float(UB_CONFIG["pitch_trend_fixed_weight"]))
-    if pitch_trend.get("score", 0) >= float(UB_CONFIG["pitch_trend_elite_score"]) and pitch_trend.get("independent_support_families", 0) >= 2:
-        weight = max(weight, float(UB_CONFIG["pitch_trend_elite_fixed_weight"]))
-    if damage_independence.get("active"):
-        weight = max(weight, float(damage_independence.get("weight_floor") or 0.0))
-    raw = merge_projection + structural_delta * weight
-    strong_families = escape_support + recent.get("support_families", 0) + min(1, int(pitch_trend.get("independent_support_families") or 0))
-    cap = float(UB_CONFIG["strong_max_move_k"] if strong_families >= 3 else UB_CONFIG["ordinary_max_move_k"])
-    if workload.get("workload_mismatch_score", 0) >= 65:
-        cap = max(cap, float(UB_CONFIG["structural_reconcile_max_move_k"]))
-    capped = merge_projection + float(clamp(raw - merge_projection, -cap, cap))
-    coherence = _ub_projection_coherence_adjustment(merge_projection, capped, fixed, recent, workload, regime)
-    capped = coherence.get("projection", capped)
-    projection = round(capped, 2)
-
-    merge_bf_for_attr = float(workload.get("merge_bf") or workload.get("bf_p50") or DEFAULT_BF)
-    ub_bf_for_attr = float(workload.get("bf_p50") or merge_bf_for_attr)
-    pretrend_kbf_no_escape = float(fixed.get("pre_pitch_trend_matchup_kbf_no_escape") or fixed.get("matchup_kbf_no_escape") or fixed.get("matchup_kbf") or LEAGUE_AVG_K)
-    kbf_no_escape = float(fixed.get("matchup_kbf_no_escape") or fixed.get("matchup_kbf") or LEAGUE_AVG_K)
-    kbf_with_escape = float(fixed.get("matchup_kbf") or kbf_no_escape)
-    ub_skill_matchup_delta = weight * ((pretrend_kbf_no_escape * merge_bf_for_attr) - merge_projection)
-    ub_pitch_trend_delta = weight * ((kbf_no_escape - pretrend_kbf_no_escape) * merge_bf_for_attr)
-    ub_workload_delta = weight * (kbf_no_escape * (ub_bf_for_attr - merge_bf_for_attr))
-    ub_suppression_delta = weight * ((kbf_with_escape - kbf_no_escape) * ub_bf_for_attr)
-    ub_pre_cap_delta = ub_skill_matchup_delta + ub_pitch_trend_delta + ub_workload_delta + ub_suppression_delta
-    ub_cap_adjustment = (projection - merge_projection) - ub_pre_cap_delta
-    ub_attribution_residual = (projection - merge_projection) - (
-        ub_skill_matchup_delta + ub_pitch_trend_delta + ub_workload_delta + ub_suppression_delta + ub_cap_adjustment
+    data_quality = _ub_data_quality(p, row, fixed.get("lineup", {}), workload, regime)
+    components = _ub_component_blend_profile(merge_projection, fixed, workload, recent, regime, data_quality)
+    projection = round(float(components.get("projection") or merge_projection), 2)
+    # Legacy display field retained; in V1.5 it represents independent K/BF authority.
+    weight = float(components.get("kbf_authority") or UB_CONFIG["component_kbf_authority_normal"])
+    cap = float(components.get("movement_cap") or UB_CONFIG["ordinary_max_move_k"])
+    coherence = components.get("coherence") or {}
+    current_state = fixed.get("current_state") or {}
+    current_state_status = str(current_state.get("state") or "NORMAL")
+    direction_audit = _ub_persistent_direction_audit(
+        pitcher_id=p.get("pitcher_id") or row.get("Pitcher ID"),
+        pitcher_name=row.get("Pitcher") or p.get("pitcher"),
+        current_line=line, independent_projection=fixed.get("projection"),
     )
+    ub_skill_matchup_delta = float(components.get("skill_matchup_delta") or 0.0)
+    ub_pitch_trend_delta = float(components.get("pitch_trend_delta") or 0.0)
+    ub_workload_delta = float(components.get("workload_delta") or 0.0)
+    ub_suppression_delta = float(components.get("suppression_delta") or 0.0)
+    ub_cap_adjustment = float(components.get("guard_adjustment") or 0.0)
+    ub_attribution_residual = float(components.get("attribution_residual") or 0.0)
 
     edge = None if line is None else projection - line
     false_over = _ub_false_over_profile(p, row, fixed, recent, workload, line, projection)
@@ -63237,6 +63520,10 @@ def _ub_build_row(row, p):
         "PO vs Merge True Side Disagreement": bool(po_same_line and po_side in {"OVER","UNDER"} and merge_side in {"OVER","UNDER"} and po_side != merge_side),
         "UB Fixed Core Projection": round(fixed["projection"], 2), "Undefeated Beta Projection": projection,
         "Undefeated Beta Edge": None if edge is None else round(edge, 2), "Undefeated Beta Side": decision["research_side"],
+        "UB Side Math Check": bool(line is None or decision["research_side"] == ("OVER" if projection > line else "UNDER" if projection < line else "PUSH")),
+        "UB Edge Math Check": bool(line is None or abs((projection-line)-edge) <= 1e-9),
+        "UB Side Flip vs Merge": bool(line is not None and merge_side in {"OVER","UNDER"} and decision["research_side"] in {"OVER","UNDER"} and merge_side != decision["research_side"]),
+        "UB Flip Driver": max([("KBF",abs(ub_skill_matchup_delta+ub_pitch_trend_delta+ub_suppression_delta)),("WORKLOAD",abs(ub_workload_delta)),("GUARD",abs(ub_cap_adjustment))], key=lambda x:x[1])[0] if line is not None else "NO_LINE",
         "Undefeated Beta Playability": decision["playability"], "Undefeated Beta Decision State": decision["state"], "Undefeated Beta Decision Reason": decision["reason"],
         "UB Raw Clear Probability %": round(probability.get("raw", 0.5) * 100, 1), "UB Calibrated Clear Probability %": round(probability.get("calibrated", 0.5) * 100, 1),
         "UB Confidence Cap Reason": "; ".join(probability.get("cap_reasons") or []) or "NONE",
@@ -63255,15 +63542,41 @@ def _ub_build_row(row, p):
         "UB L10 Pitch Count": workload.get("recent_pc_l10"), "UB Pitch Count Ramp State": workload.get("pitch_count_ramp_state"),
         "UB Regime": regime.get("state"), "UB Regime Confidence": regime.get("confidence"), "UB Regime Reason": regime.get("reason"),
         "UB Skill K/BF": round(fixed.get("skill_kbf", LEAGUE_AVG_K), 4), "UB Matchup K/BF": round(fixed.get("matchup_kbf", LEAGUE_AVG_K), 4),
+        "UB Current State": current_state.get("state"), "UB Current State Authority": current_state.get("authority"),
+        "UB Current State K/BF": round(float(current_state.get("kbf") or fixed.get("skill_kbf", LEAGUE_AVG_K)), 4),
+        "UB Current State Recent Consensus K/BF": None if current_state.get("recent_consensus_kbf") is None else round(float(current_state.get("recent_consensus_kbf")), 4),
+        "UB Current State Recent Weight": round(float(current_state.get("recent_weight") or 0.0), 3),
+        "UB Current State Absolute Adj K/BF": round(float(current_state.get("absolute_adjustment_kbf") or 0.0), 4),
+        "UB Current State Support": "; ".join(current_state.get("support_families") or []) or "NONE",
+        "UB Current State Risk": "; ".join(current_state.get("risk_families") or []) or "NONE",
+        "UB True Talent K/BF": round(float(current_state.get("true_talent_kbf") or fixed.get("base_skill_kbf") or LEAGUE_AVG_K),4),
+        "UB True Talent Sources": "; ".join(current_state.get("true_talent_sources") or []) or "UNKNOWN",
+        "UB Recency Decay K/BF": None if current_state.get("recent_consensus_kbf") is None else round(float(current_state.get("recent_consensus_kbf")),4),
+        "UB Recency Decay Starts": current_state.get("recency_decay_starts"), "UB Recency Decay BF": current_state.get("recency_decay_raw_bf"),
+        "UB Merge Implied K/BF": round(float(components.get("merge_implied_kbf") or 0.0),4),
+        "UB Independent Matchup K/BF": round(float(components.get("independent_kbf") or 0.0),4),
+        "UB Blended K/BF": round(float(components.get("blended_kbf") or 0.0),4),
+        "UB KBF Authority": round(float(components.get("kbf_authority") or 0.0),3),
+        "UB Merge BF Component": round(float(components.get("merge_bf") or 0.0),2),
+        "UB Independent BF Component": round(float(components.get("independent_bf") or 0.0),2),
+        "UB Blended BF": round(float(components.get("blended_bf") or 0.0),2),
+        "UB Workload Authority": round(float(components.get("workload_authority") or 0.0),3),
+        "UB Raw Component Projection": round(float(components.get("raw_component_projection") or projection),3),
+        "UB Component Math Status": components.get("math_status"),
+        "UB Persistent Direction Status": direction_audit.get("status"), "UB Persistent Direction Sample": direction_audit.get("sample"),
+        "UB Persistent Direction Side": direction_audit.get("dominant_side"), "UB Persistent Direction Share": direction_audit.get("same_side_share"),
+        "UB Persistent Direction Conflict": bool(direction_audit.get("conflict")),
         "UB Lineup Exposure K%": round(fixed.get("lineup", {}).get("exposure_rate", LEAGUE_AVG_K) * 100, 2), "UB Lineup Stage": fixed.get("lineup", {}).get("stage"),
         "UB Lineup Source": fixed.get("lineup", {}).get("source"), "UB True Hand Split": bool(fixed.get("lineup", {}).get("true_hand_split")),
         "UB Matchup Mode": fixed.get("mode"), "UB Matchup Application Count": fixed.get("matchup_application_count"),
         "UB Opponent Primary Application Count": 1,
         "UB Recent Batter Trend Application Count": 0,
-        "UB Duplicate Signal Family Flag": False,
+        "UB Duplicate Signal Family Flag": bool(components.get("duplicate_signal_flag")),
+        "UB Deduped Signal Families": "; ".join(components.get("signal_families") or []) or "NONE",
+        "UB Signal Family Counts JSON": _ub_json(components.get("signal_family_counts") or {}),
         "UB Signal Ownership JSON": _ub_json({
-            "pitcher_base_skill": "UB skill prior",
-            "current_stuff": "UB skill composite",
+            "pitcher_base_skill": "V1.5 direct true-talent prior",
+            "current_stuff": "V1.5 recency-decay + grouped absolute current-state K/BF",
             "recent_stuff_trend": "UB recent acceleration",
             "opponent_batter_k": "single Log5 per PA",
             "lineup_order": "BF exposure allocation",
@@ -63342,19 +63655,19 @@ def _ub_build_row(row, p):
         "UB Cap Adjustment": round(ub_cap_adjustment, 3),
         "UB Attribution Residual": round(ub_attribution_residual, 6),
         "UB Attribution Reconciles": bool(abs(ub_attribution_residual) <= 1e-6),
-        "UB Structural Delta": round(structural_delta * weight, 3), "UB Total Delta vs Merge": round(projection - merge_projection, 3), "UB Movement Cap K": cap,
+        "UB Structural Delta": round(float(components.get("raw_component_projection") or projection) - merge_projection, 3), "UB Total Delta vs Merge": round(projection - merge_projection, 3), "UB Movement Cap K": cap,
         "UB Signal Ledger JSON": _ub_json({
             "skill": {"base": fixed.get("base_skill_kbf"), "final": fixed.get("skill_kbf"), "recent_weight": fixed.get("recent_weight")},
             "opponent": {"source": fixed.get("lineup", {}).get("source"), "exposure": fixed.get("lineup", {}).get("exposure_rate"), "single_log5": True},
             "workload": workload, "recent": recent, "pitch_trend": pitch_trend, "regime": regime, "suppression": fixed.get("escape"),
             "damage_k_independence": damage_independence, "false_over": false_over, "under_ceiling": under_ceiling, "feasibility": feasibility,
-            "coherence": coherence, "historical_calibration": historical,
+            "component_blend": components, "coherence": coherence, "historical_calibration": historical,
         }),
         "UB No Sportsbook Leakage": True,
     }
     output.update(_brain_profile(p, row, output))
     output["UB Official Tier"] = output.get("Best Play Tier")
-    output["UB Pregame Feature Persistence"] = "COMPLETE_V1_3_PITCH_TREND_WORKLOAD"
+    output["UB Pregame Feature Persistence"] = "COMPLETE_V1_5_COMPONENT_REBUILD"
     output["UB Snapshot ID"] = _ub_hash_payload({
         "date": output.get("Slate Date"), "game": output.get("GamePk"), "pitcher": output.get("Pitcher ID") or output.get("Pitcher"),
         "line": line, "stage": output.get("UB Lineup Stage"), "version": UNDEFEATED_BETA_VERSION,
@@ -63910,10 +64223,14 @@ def render_undefeated_beta_tab(board, integrated=False):
         cols = [c for c in [
             "Undefeated Beta Rank", "Pitcher", "Matchup", "Line", "Merge Control Projection", "Master Core Only Projection",
             "PO Projection", "PO Line", "PO Same Line", "PO Timestamp", "Merge Timestamp", "PO vs Merge True Side Disagreement",
-            "UB Fixed Core Projection", "Undefeated Beta Projection", "Undefeated Beta Side", "Undefeated Beta Playability", "UB Calibrated Clear Probability %",
+            "UB Fixed Core Projection", "Undefeated Beta Projection", "Undefeated Beta Side", "UB Side Flip vs Merge", "UB Flip Driver", "UB Side Math Check", "UB Edge Math Check", "Undefeated Beta Playability", "UB Calibrated Clear Probability %",
             "UB Skill/Matchup Delta", "UB Pitch Trend Delta", "UB Workload Delta", "UB Suppression Escape Delta", "UB Cap Adjustment", "UB Attribution Residual",
             "UB BF P10", "UB BF P50", "UB BF P90", "UB IP P50", "UB Skill K/BF", "UB Matchup K/BF", "UB Lineup Exposure K%",
             "UB K Opportunity Score", "UB Conversion Score", "UB Pitcher K% Used", "UB Whiff% Used", "UB CSW% Used", "UB PutAway% Used",
+            "UB Current State", "UB Current State Authority", "UB Current State K/BF", "UB Current State Recent Consensus K/BF", "UB Current State Recent Weight",
+            "UB Current State Support", "UB Current State Risk", "UB True Talent K/BF", "UB True Talent Sources", "UB Recency Decay K/BF", "UB Recency Decay Starts",
+            "UB Merge Implied K/BF", "UB Independent Matchup K/BF", "UB Blended K/BF", "UB KBF Authority", "UB Merge BF Component", "UB Independent BF Component", "UB Blended BF", "UB Workload Authority", "UB Raw Component Projection", "UB Component Math Status",
+            "UB Persistent Direction Status", "UB Persistent Direction Sample", "UB Persistent Direction Side", "UB Persistent Direction Share", "UB Persistent Direction Conflict",
             "UB Suppression Escape Score", "UB False Over Risk", "UB Under Ceiling Risk", "UB Under Ceiling Status", "UB Recent K Acceleration", "UB Pitch Trend Score", "UB Pitch Trend Status", "UB Pitch Trend KBF Adjustment", "UB K per 100 Pitches L3", "UB K per 100 Pitches L10", "UB Workload Escape Score", "UB Workload Mismatch Score", "UB Pitch Capacity BF", "UB Pitch Count Authority Score", "UB Manager Leash State", "UB Damage K Independence", "UB Recent Starter Authority",
             "UB Hist Calibration Source", "UB Hist Calibration Flags", "UB Hist Side Plays", "UB Hist Side Avg Error",
             "UB Hist Line Bucket", "UB Hist Line Plays", "UB Hist Line Win %", "UB Hist Line Avg Error", "UB Hist Line MAE",
@@ -64008,6 +64325,95 @@ def render_sports_analysis_brain_tab(board):
                 st.code(str(rr.get("Brain Research JSON") or "{}"), language="json")
 
 
+
+
+def _ub_v15_self_test_report():
+    results=[]
+    def add(name,ok,detail=""): results.append({"test":name,"pass":bool(ok),"detail":detail})
+    try:
+        p={"pitcher_k":0.22,"k_history_context_v256":{"game_log":[
+            {"date":"2026-08-14","Ks":8,"BF":24,"IP":"6.0","pitch_count":94,"role":"STARTER"},
+            {"date":"2026-08-08","Ks":7,"BF":23,"IP":"5.2","pitch_count":92,"role":"STARTER"},
+            {"date":"2026-08-02","Ks":7,"BF":24,"IP":"6.0","pitch_count":93,"role":"STARTER"},
+            {"date":"2026-07-27","Ks":4,"BF":23,"IP":"5.1","pitch_count":91,"role":"STARTER"}],
+            "L5_Whiff_pct":31.0,"L5_CSW_pct":31.0,"L5_swinging_strike_pct":14.5,"L5_two_strike_putaway_pct":27.0}}
+        recent=_ub_recent_skill_profile(p); work=_ub_workload_distribution(p,{"Canonical Expected BF":21.0,"Canonical Projected IP":5.0}); fixed=_ub_fixed_core(p,{},work,recent,{"state":"NORMAL"})
+        comp=_ub_component_blend_profile(4.6,fixed,work,recent,{"state":"NORMAL"},85.0)
+        add("component rebuild can materially separate from Merge", abs(comp["projection"]-4.6)>=0.35, str(comp))
+        add("component attribution reconciles exactly", abs(comp["attribution_residual"])<=1e-6 and comp["math_status"]=="PASS", str(comp))
+    except Exception as e:
+        add("component rebuild can materially separate from Merge",False,str(e)); add("component attribution reconciles exactly",False,str(e))
+    try:
+        p={"k_history_context_v256":{"game_log":[
+            {"date":"2026-08-14","Ks":6,"BF":20,"IP":"5.0","role":"STARTER"},
+            {"date":"2026-08-08","Ks":3,"BF":20,"IP":"5.0","role":"STARTER"},
+            {"date":"2026-08-02","Ks":2,"BF":20,"IP":"5.0","role":"STARTER"}]}}
+        decay=_ub_recency_decay_kbf(p)
+        add("recency decay is event-level pooled not overlapping-window mean", decay.get("starts")==3 and decay.get("rate") is not None, str(decay))
+    except Exception as e: add("recency decay is event-level pooled not overlapping-window mean",False,str(e))
+    try:
+        p={"pitcher_k":0.24,"k_history_context_v256":{"game_log":[]}}
+        prior=_ub_independent_true_talent_kbf(p,{"Canonical Pitcher K%":35.0},fallback=0.35)
+        add("direct raw K prior beats canonical fallback", abs(prior.get("kbf",0)-0.24)<1e-9 and not prior.get("fallback_used"), str(prior))
+    except Exception as e: add("direct raw K prior beats canonical fallback",False,str(e))
+    try:
+        fake_recent={"status":"STRONG","support_families":2}; fake_work={"confidence":"HIGH","bf_p50":23}
+        esc=_ub_escape_profile({"pitcher_k":0.29,"statcast_whiff":0.31,"statcast_csw":0.305,"pitch_type_factor":1.02},{},fake_recent,fake_work,0.29)
+        add("Whiff and CSW are deduped into one pitch-quality family", "PITCH_QUALITY" in esc.get("support_families",[]) and esc.get("support_count",0)<=5, str(esc))
+    except Exception as e: add("Whiff and CSW are deduped into one pitch-quality family",False,str(e))
+    try:
+        import inspect
+        add("component blend has no sportsbook line input", "line" not in [x.lower() for x in inspect.signature(_ub_component_blend_profile).parameters], str(inspect.signature(_ub_component_blend_profile)))
+    except Exception as e: add("component blend has no sportsbook line input",False,str(e))
+    return {"passed":sum(1 for r in results if r["pass"]),"total":len(results),"results":results}
+
+
+def _ub_v14_self_test_report():
+    results = []
+    def add(name, ok, detail=""):
+        results.append({"test":name, "pass":bool(ok), "detail":detail})
+    try:
+        p = {"k_history_context_v256": {
+            "game_log":[
+                {"date":"2026-08-14","Ks":7,"BF":24,"IP":"6.0","pitch_count":93,"role":"STARTER"},
+                {"date":"2026-08-08","Ks":7,"BF":23,"IP":"5.2","pitch_count":92,"role":"STARTER"},
+                {"date":"2026-08-02","Ks":6,"BF":23,"IP":"5.2","pitch_count":91,"role":"STARTER"},
+                {"date":"2026-07-27","Ks":7,"BF":24,"IP":"6.0","pitch_count":94,"role":"STARTER"},
+                {"date":"2026-07-21","Ks":6,"BF":23,"IP":"5.1","pitch_count":92,"role":"STARTER"},
+            ],
+            "L3_Whiff_pct":31.0,"L5_Whiff_pct":31.0,"L10_Whiff_pct":30.8,
+            "L3_CSW_pct":30.8,"L5_CSW_pct":30.8,"L10_CSW_pct":30.6,
+            "L3_swinging_strike_pct":14.6,"L5_swinging_strike_pct":14.5,"L10_swinging_strike_pct":14.4,
+            "L5_two_strike_putaway_pct":27.0,
+        }}
+        recent = _ub_recent_skill_profile(p)
+        work = _ub_workload_distribution(p, {"Canonical Expected BF":22.0,"Canonical Projected IP":5.2})
+        state = _ub_current_state_skill_profile(p, {}, recent, work, 0.22)
+        add("sustained elite does not require acceleration", state.get("state") == "SUSTAINED_ELITE" and state.get("kbf",0) > 0.25, str(state))
+    except Exception as exc:
+        add("sustained elite does not require acceleration", False, str(exc))
+    try:
+        p = {"k_history_context_v256": {"game_log":[
+            {"date":"2026-08-14","Ks":2,"BF":23,"IP":"5.1","pitch_count":92,"role":"STARTER"},
+            {"date":"2026-08-08","Ks":2,"BF":22,"IP":"5.0","pitch_count":90,"role":"STARTER"},
+            {"date":"2026-08-02","Ks":3,"BF":23,"IP":"5.1","pitch_count":91,"role":"STARTER"},
+        ],"L5_Whiff_pct":19.0,"L5_CSW_pct":24.5,"L5_swinging_strike_pct":8.5,"L5_two_strike_putaway_pct":14.0}}
+        recent = _ub_recent_skill_profile(p); work = _ub_workload_distribution(p,{"Canonical Expected BF":22.0})
+        state = _ub_current_state_skill_profile(p, {}, recent, work, 0.23)
+        add("declining current state can lower K/BF", state.get("state") == "DECLINING_CURRENT" and state.get("kbf",1) < 0.23, str(state))
+    except Exception as exc:
+        add("declining current state can lower K/BF", False, str(exc))
+    try:
+        # Function has no line argument and therefore cannot leak sportsbook data into biological K/BF.
+        params = list(__import__('inspect').signature(_ub_current_state_skill_profile).parameters)
+        add("current-state rebuild has no sportsbook-line input", "line" not in [x.lower() for x in params], str(params))
+    except Exception as exc:
+        add("current-state rebuild has no sportsbook-line input", False, str(exc))
+    try:
+        add("challenger base authority materially above V1.3", float(UB_CONFIG["fixed_core_weight"]) >= 0.55 and float(UB_CONFIG["current_state_weight_elite"]) >= 0.85, str({k:UB_CONFIG[k] for k in ["fixed_core_weight","current_state_weight_strong","current_state_weight_elite"]}))
+    except Exception as exc:
+        add("challenger base authority materially above V1.3", False, str(exc))
+    return {"passed":sum(1 for r in results if r["pass"]), "total":len(results), "results":results}
 
 def _ub_v13_self_test_report():
     results = []
