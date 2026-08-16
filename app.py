@@ -61294,6 +61294,555 @@ def _impl_render_first_inning_k_tab_01(board):
 
 
 
+
+# =============================================================================
+# MONEYLINE V3 CLEAN CANONICAL ENGINE — DEDUPED FAMILIES + CALIBRATED PROBABILITY
+# Version: 2026-08-16
+#
+# Active architecture:
+#   OFFENSE (one family) + STARTER (one family) + BULLPEN/DEFENSE (one family)
+#   + CONTEXT/MARKET (one family) -> projected runs -> exact Poisson win probability
+#   -> calibration -> tier.
+#
+# Important cleanup:
+# - K projection is NOT reused as a separate SP-strength input.
+# - K%, IP, K projection, FIP, WHIP are NOT stacked as independent SP bonuses.
+# - BaseRuns/wRC+/Pythagorean/lineup are NOT repeatedly added in several wrappers.
+# - Market odds are REQUIRED for OFFICIAL/PLAYABLE status, but never alter projected runs.
+# - Data quality is separate from win probability. A 90/100 data-quality score is NOT 90% win odds.
+# - Legacy _impl_ml_build_board_01..18 remain available for audit only; the public binding below
+#   points directly to this clean engine.
+# =============================================================================
+MONEYLINE_CLEAN_CANONICAL_VERSION = "MONEYLINE_V3_CLEAN_CANONICAL_2026_08_16"
+ML_CLEAN_CALIBRATION_SHRINK_MARKET = 0.62
+ML_CLEAN_CALIBRATION_SHRINK_MODEL_ONLY = 0.52
+ML_CLEAN_MARKET_BLEND_WEIGHT = 0.25
+ML_CLEAN_LEAGUE_RA9 = 4.35
+
+
+def _mlv3_num(value, default=None):
+    try:
+        if value in (None, "", "—", "-", "None", "nan", "NaN"):
+            return default
+        v = float(str(value).replace("%", "").replace(",", "").strip())
+        return v if np.isfinite(v) else default
+    except Exception:
+        return default
+
+
+def _mlv3_pct_decimal(value, default=None):
+    v = _mlv3_num(value, default)
+    if v is None:
+        return default
+    if abs(v) > 1.0:
+        v /= 100.0
+    return float(v)
+
+
+def _mlv3_first(row, keys, default=None):
+    row = row if isinstance(row, dict) else {}
+    for key in keys:
+        v = row.get(key)
+        if v not in (None, "", "—", "-", "None", "nan", "NaN"):
+            return v
+    return default
+
+
+def _mlv3_team_id(team, row=None):
+    try:
+        return ml_resolve_team_id(team, row or {})
+    except Exception:
+        try:
+            return ML_TEAM_ID_MAP_FALLBACK.get(ml_canonical_abbr(team))
+        except Exception:
+            return None
+
+
+def _mlv3_override_value(override, side, label, default=None):
+    if not isinstance(override, dict):
+        return default
+    return override.get(f"{side} {label}", default)
+
+
+def _mlv3_recent_wrc(team, opp_hand):
+    """One recent-offense input. Returns None when the current data pack has no real value."""
+    try:
+        names = ["vs_lhp_wrc_30d", "wrc_plus_vs_l_30d", "wrc_l_30d"] if str(opp_hand or "").upper().startswith("L") else ["vs_rhp_wrc_30d", "wrc_plus_vs_r_30d", "wrc_r_30d"]
+        for name in names:
+            val = _mlrd_lookup(team, name, None) if "_mlrd_lookup" in globals() else None
+            if val is not None and np.isfinite(float(val)):
+                return float(val)
+    except Exception:
+        pass
+    return None
+
+
+def _mlv3_offense_profile(team, team_row, opp_row, override=None, side="Away"):
+    team_row = team_row if isinstance(team_row, dict) else {}
+    opp_row = opp_row if isinstance(opp_row, dict) else {}
+    team_id = _mlv3_team_id(team, team_row)
+    try:
+        hit = ml_team_hitting_profile(team_id) if team_id else {}
+    except Exception:
+        hit = {}
+    opp_hand = None
+    try:
+        opp_hand = _pitcher_hand_from_row(opp_row)
+    except Exception:
+        opp_hand = None
+    try:
+        wrc_prof = ml_team_wrc_split_profile(team_id, opp_hand) if team_id else {}
+    except Exception:
+        wrc_prof = {}
+
+    runs_pg = _mlv3_num((hit or {}).get("runs_pg"), MLB_AVG_RUNS_PER_GAME) or MLB_AVG_RUNS_PER_GAME
+    baseruns = _mlv3_num((hit or {}).get("baseruns_pg"), runs_pg) or runs_pg
+    season_wrc = _mlv3_num((wrc_prof or {}).get("wrc_plus_split"), 100.0) or 100.0
+    recent_wrc = _mlv3_recent_wrc(team, opp_hand)
+    override_wrc = _mlv3_num(_mlv3_override_value(override or {}, side, "wRC+ vs Hand", None), None)
+    if override_wrc is not None:
+        wrc = override_wrc
+        wrc_source = "REAL_DATA_OVERRIDE"
+    elif recent_wrc is not None:
+        # Same offense family: recent form refines the split; it is not added as a second bonus.
+        wrc = 0.70 * season_wrc + 0.30 * recent_wrc
+        wrc_source = "SEASON_SPLIT_70_RECENT30"
+    else:
+        wrc = season_wrc
+        wrc_source = (wrc_prof or {}).get("source") or "SEASON_SPLIT_FALLBACK"
+
+    try:
+        conf_delta, conf_label, conf_count = _team_confirmed_lineup_strength_delta(team_id) if team_id else (0.0, "NO_CONFIRMED_LINEUP", None)
+    except Exception:
+        conf_delta, conf_label, conf_count = 0.0, "NO_CONFIRMED_LINEUP", None
+    override_confirmed = _mlrd_bool(_mlv3_override_value(override or {}, side, "Lineup Confirmed", None)) if "_mlrd_bool" in globals() else None
+    if override_confirmed is True:
+        conf_label = "CONFIRMED_OVERRIDE"
+    elif override_confirmed is False:
+        conf_label = "NOT_CONFIRMED_OVERRIDE"
+
+    # One offense center. BaseRuns and Runs/G are blended once; wRC and lineup refine it once.
+    baseline = 0.55 * baseruns + 0.25 * runs_pg + 0.20 * MLB_AVG_RUNS_PER_GAME
+    wrc_adj = float(clamp((wrc - 100.0) * 0.009, -0.38, 0.38))
+    lineup_adj = float(clamp((_mlv3_num(conf_delta, 0.0) or 0.0) * 0.08, -0.22, 0.22))
+    offense_runs = float(clamp(baseline + wrc_adj + lineup_adj, 2.8, 6.4))
+    available = bool((hit or {}).get("available"))
+    quality = 35 + (35 if available else 0) + (15 if season_wrc != 100 or recent_wrc is not None or override_wrc is not None else 0) + (15 if "CONFIRMED" in str(conf_label).upper() and "NO_" not in str(conf_label).upper() else 0)
+    quality = int(clamp(quality, 25, 100))
+    return {
+        "team_id": team_id, "runs_pg": runs_pg, "baseruns_pg": baseruns,
+        "wrc": round(float(wrc), 1), "wrc_source": wrc_source,
+        "lineup_label": conf_label, "lineup_count": conf_count, "lineup_delta": conf_delta,
+        "offense_runs": round(offense_runs, 3), "available": available, "quality": quality,
+        "opp_hand": opp_hand or "UNKNOWN",
+    }
+
+
+def _mlv3_sp_profile(row, override=None, side="Away"):
+    """One starting-pitcher family. No K-projection stacking."""
+    row = row if isinstance(row, dict) else {}
+    name = str(_mlv3_first(row, ["pitcher", "Pitcher", "Player", "name"], "") or "").strip()
+    ip = _mlv3_num(_mlv3_first(row, ["IP Projection", "IP PROJ", "Projected IP", "IP Floor", "projected_ip", "ip_floor", "recent_ip"], None), None)
+    if ip is None:
+        exp_bf = _mlv3_num(_mlv3_first(row, ["APP97 Reconciled Expected BF", "Exp BF", "expected_bf", "Projected BF"], None), None)
+        ip = 5.2 if exp_bf is None else exp_bf / 4.20
+    ip = float(clamp(ip, 1.0, 7.2))
+
+    estimator_vals = []
+    estimator_sources = []
+    for key in ["xERA", "APP100 Pitcher FIP", "APP97 Live Pitcher FIP", "Pitcher FIP Used", "FIP", "xFIP", "SIERA"]:
+        v = _mlv3_num(row.get(key), None)
+        if v is not None and 1.0 <= v <= 8.5:
+            estimator_vals.append(v); estimator_sources.append(key)
+    if estimator_vals:
+        ra9 = float(np.median(estimator_vals))
+        estimator_available = True
+    else:
+        era = _mlv3_num(_mlv3_first(row, ["APP100 Pitcher ERA", "APP97 Live Pitcher ERA", "Pitcher ERA Used", "ERA"], None), None)
+        ra9 = float(era) if era is not None and 1.0 <= era <= 9.0 else ML_CLEAN_LEAGUE_RA9
+        estimator_available = era is not None
+        if era is not None: estimator_sources.append("ERA_FALLBACK")
+
+    # K-BB is one secondary conversion/control signal; do not separately add K%, BB%, K projection.
+    kbb = _mlv3_pct_decimal(_mlv3_first(row, ["K-BB%", "KBB%", "kbb_pct", "APP100 K-BB%"], None), None)
+    whip = _mlv3_num(_mlv3_first(row, ["APP100 Pitcher WHIP", "APP97 Live Pitcher WHIP", "Pitcher WHIP", "WHIP"], None), None)
+    if kbb is not None:
+        ra9 -= float(clamp((kbb - 0.14) * 3.0, -0.42, 0.42))
+    if whip is not None and 0.7 <= whip <= 2.2:
+        ra9 += float(clamp((whip - 1.25) * 1.25, -0.32, 0.38))
+    ra9 = float(clamp(ra9, 2.0, 7.0))
+
+    confirmed_override = _mlrd_bool(_mlv3_override_value(override or {}, side, "Starter Confirmed", None)) if "_mlrd_bool" in globals() else None
+    role_flag = str(_mlv3_override_value(override or {}, side, "SP Role Flag", "") or "").upper()
+    confirmed = confirmed_override is not False and bool(name)
+    if any(token in role_flag for token in ("LIMIT", "OPENER", "SHORT", "BULK")):
+        ip = min(ip, 4.5 if "BULK" in role_flag else 3.5)
+    quality = 30 + (25 if name else 0) + (25 if estimator_available else 0) + (10 if kbb is not None else 0) + (10 if whip is not None else 0)
+    if confirmed_override is False: quality -= 25
+    quality = int(clamp(quality, 15, 100))
+    strength = float(clamp(50.0 + (ML_CLEAN_LEAGUE_RA9 - ra9) * 8.0 + (ip - 5.2) * 1.8, 25.0, 78.0))
+    return {
+        "name": name or "—", "ip": round(ip, 2), "ra9": round(ra9, 3), "strength": round(strength, 1),
+        "kbb": kbb, "whip": whip, "quality": quality, "confirmed": confirmed,
+        "role_flag": role_flag or "NONE", "sources": estimator_sources or ["LEAGUE_FALLBACK"],
+    }
+
+
+def _mlv3_bullpen_profile(team, team_row, game_date=None, override=None, side="Away"):
+    team_id = _mlv3_team_id(team, team_row or {})
+    era = None; whip = None; xfip = None
+    if "_mlrd_lookup" in globals():
+        for key in ["bp_era_14d", "bullpen_era_14d"]:
+            era = _mlrd_lookup(team, key, None)
+            if era is not None: break
+        for key in ["bp_whip_14d", "bullpen_whip_14d"]:
+            whip = _mlrd_lookup(team, key, None)
+            if whip is not None: break
+        for key in ["bp_xfip_14d", "bullpen_xfip_14d"]:
+            xfip = _mlrd_lookup(team, key, None)
+            if xfip is not None: break
+    metrics = [float(v) for v in [era, xfip] if v is not None and np.isfinite(float(v)) and 1.0 <= float(v) <= 9.0]
+    ra9 = float(np.mean(metrics)) if metrics else 4.20
+    if whip is not None and 0.7 <= float(whip) <= 2.2:
+        ra9 += float(clamp((float(whip) - 1.30) * 1.0, -0.25, 0.30))
+
+    try:
+        usage = get_recent_team_bullpen_usage(team_id, game_date, lookback_days=3) if team_id else {}
+    except Exception:
+        usage = {}
+    label = str((usage or {}).get("label") or "UNKNOWN").upper()
+    if label == "TIRED": ra9 += 0.35
+    elif label == "FRESH": ra9 -= 0.15
+
+    bp_available = _mlrd_bool(_mlv3_override_value(override or {}, side, "Bullpen Available", None)) if "_mlrd_bool" in globals() else None
+    closer_available = _mlrd_bool(_mlv3_override_value(override or {}, side, "Closer Available", None)) if "_mlrd_bool" in globals() else None
+    leverage_available = _mlrd_bool(_mlv3_override_value(override or {}, side, "High Leverage Available", None)) if "_mlrd_bool" in globals() else None
+    if bp_available is False: ra9 += 0.45
+    if closer_available is False: ra9 += 0.18
+    if leverage_available is False: ra9 += 0.22
+    ra9 = float(clamp(ra9, 2.6, 6.4))
+    available = bool(metrics or (usage or {}).get("available"))
+    quality = 35 + (35 if metrics else 0) + (20 if (usage or {}).get("available") else 0) + (10 if bp_available is not False else 0)
+    quality = int(clamp(quality, 20, 100))
+    strength = float(clamp(50.0 + (4.20 - ra9) * 8.0, 25.0, 78.0))
+    return {
+        "ra9": round(ra9, 3), "strength": round(strength, 1), "quality": quality, "available": available,
+        "usage_label": label, "usage": usage, "era14": era, "xfip14": xfip, "whip14": whip,
+    }
+
+
+def _mlv3_defense_score(row):
+    v = _mlv3_num(_mlv3_first(row or {}, ["Defense Score", "OAA Score", "DRS Score", "Team Defense Score"], None), None)
+    return 50.0 if v is None else float(clamp(v, 25.0, 80.0))
+
+
+def _mlv3_expected_runs(team, team_row, opp_row, offense, opp_sp, opp_bp, park_factor=1.0, is_home=False):
+    offense_rate = float(offense.get("offense_runs") or MLB_AVG_RUNS_PER_GAME)
+    sp_ip = float(clamp(opp_sp.get("ip", 5.2), 0.0, 8.0))
+    bp_ip = max(0.0, 9.0 - sp_ip)
+    opp_pitching_ra9 = (float(opp_sp.get("ra9", ML_CLEAN_LEAGUE_RA9)) * sp_ip + float(opp_bp.get("ra9", 4.20)) * bp_ip) / 9.0
+    pitching_adj = float(clamp((opp_pitching_ra9 - ML_CLEAN_LEAGUE_RA9) * 0.62, -0.85, 0.95))
+    defense = _mlv3_defense_score(opp_row)
+    defense_adj = -float(clamp((defense - 50.0) * 0.006, -0.18, 0.18))
+    park_adj = float(clamp((float(park_factor) - 1.0) * MLB_AVG_RUNS_PER_GAME * 0.65, -0.42, 0.50))
+    home_adj = 0.12 if is_home else 0.0
+    runs = float(clamp(offense_rate + pitching_adj + defense_adj + park_adj + home_adj, 2.0, 7.8))
+    return runs, {
+        "offense_center": offense_rate, "opp_pitching_ra9": opp_pitching_ra9,
+        "pitching_adj": pitching_adj, "defense_score": defense, "defense_adj": defense_adj,
+        "park_adj": park_adj, "home_adj": home_adj,
+    }
+
+
+def _mlv3_poisson_probs(away_runs, home_runs, max_runs=20):
+    """Exact independent-Poisson game probabilities; ties are split 50/50 for ML."""
+    a = max(0.05, float(away_runs)); h = max(0.05, float(home_runs))
+    pa = [math.exp(-a)]
+    ph = [math.exp(-h)]
+    for k in range(1, int(max_runs) + 1):
+        pa.append(pa[-1] * a / k)
+        ph.append(ph[-1] * h / k)
+    # Put negligible tail mass in the last bucket so probabilities remain normalized.
+    pa[-1] += max(0.0, 1.0 - sum(pa))
+    ph[-1] += max(0.0, 1.0 - sum(ph))
+    away_win = home_win = tie = 0.0
+    away_p15 = home_p15 = away_m15 = home_m15 = 0.0
+    for i, api in enumerate(pa):
+        for j, hpj in enumerate(ph):
+            pr = api * hpj
+            if i > j: away_win += pr
+            elif j > i: home_win += pr
+            else: tie += pr
+            if i + 1.5 > j: away_p15 += pr
+            if j + 1.5 > i: home_p15 += pr
+            if i - 1.5 > j: away_m15 += pr
+            if j - 1.5 > i: home_m15 += pr
+    away_ml = away_win + 0.5 * tie
+    home_ml = home_win + 0.5 * tie
+    total = max(away_ml + home_ml, 1e-9)
+    return {
+        "away_ml": away_ml / total * 100.0, "home_ml": home_ml / total * 100.0,
+        "away_p15": away_p15 * 100.0, "home_p15": home_p15 * 100.0,
+        "away_m15": away_m15 * 100.0, "home_m15": home_m15 * 100.0,
+        "tie_9": tie * 100.0,
+    }
+
+
+def _mlv3_odds_game(odds, away, home):
+    away = ml_canonical_abbr(away); home = ml_canonical_abbr(home)
+    for game in odds or []:
+        if ml_canonical_abbr(game.get("away_abbr")) == away and ml_canonical_abbr(game.get("home_abbr")) == home:
+            return dict(game)
+    return {}
+
+
+def _mlv3_market_from_override_or_api(override, market_game):
+    away_price = _mlv3_num(_mlv3_override_value(override or {}, "Away", "Current ML", None), None)
+    home_price = _mlv3_num(_mlv3_override_value(override or {}, "Home", "Current ML", None), None)
+    source = "REAL_DATA_OVERRIDE" if away_price is not None and home_price is not None else "ODDS_API"
+    if away_price is None or home_price is None:
+        away_price = _mlv3_num((market_game or {}).get("away_price"), None)
+        home_price = _mlv3_num((market_game or {}).get("home_price"), None)
+    if away_price is not None and home_price is not None:
+        try:
+            av, hv = ml_no_vig(away_price, home_price)
+            if av is not None and hv is not None:
+                return {
+                    "available": True, "away_price": int(round(away_price)), "home_price": int(round(home_price)),
+                    "away_prob": float(av * 100.0), "home_prob": float(hv * 100.0), "source": source,
+                }
+        except Exception:
+            pass
+    return {"available": False, "away_price": None, "home_price": None, "away_prob": None, "home_prob": None, "source": "NO_MARKET"}
+
+
+def _mlv3_calibrate_pair(raw_away, market=None, quality=70):
+    market = market or {}
+    available = bool(market.get("available"))
+    if available:
+        w = ML_CLEAN_MARKET_BLEND_WEIGHT
+        pre = float(raw_away) * (1.0 - w) + float(market.get("away_prob")) * w
+        shrink = ML_CLEAN_CALIBRATION_SHRINK_MARKET
+    else:
+        pre = float(raw_away)
+        shrink = ML_CLEAN_CALIBRATION_SHRINK_MODEL_ONLY
+    # Poor data shrinks toward 50 rather than creating a fake confident favorite.
+    q_mult = 0.78 + 0.22 * float(clamp(float(quality) / 100.0, 0.0, 1.0))
+    calibrated_away = 50.0 + (pre - 50.0) * shrink * q_mult
+    calibrated_away = float(clamp(calibrated_away, 35.0, 65.0))
+    return calibrated_away, 100.0 - calibrated_away, pre, shrink * q_mult
+
+
+def _mlv3_clean_tier(pick, pick_prob, raw_pick_prob, run_gap, market, quality, missing, risks):
+    market_available = bool((market or {}).get("available"))
+    selected_market = None
+    if market_available:
+        selected_market = (market or {}).get("away_prob") if pick == "AWAY" else (market or {}).get("home_prob")
+    market_agrees = bool(selected_market is not None and selected_market >= 50.0)
+    value = None if selected_market is None else float(pick_prob - selected_market)
+    severe = any(x in risks for x in ["MISSING_STARTER", "DUPLICATE_STARTER", "STARTER_NOT_CONFIRMED"])
+
+    if not market_available:
+        tier = "MODEL ONLY / TRACK" if pick_prob >= 53.5 and quality >= 55 and not severe else "PASS ML"
+    elif severe or quality < 55:
+        tier = "PASS ML"
+    elif pick_prob >= 59.0 and quality >= 80 and run_gap >= 0.55 and (market_agrees or (value is not None and value >= 3.0)):
+        tier = "OFFICIAL ML"
+    elif pick_prob >= 56.0 and quality >= 70 and run_gap >= 0.35 and (market_agrees or (value is not None and value >= 1.5)):
+        tier = "PLAYABLE ML"
+    elif pick_prob >= 53.5 and quality >= 60:
+        tier = "LEAN / TRACK ML"
+    else:
+        tier = "PASS ML"
+    return tier, value, market_agrees
+
+
+def _impl_ml_build_board_19(board):
+    """Single active Moneyline engine. Does not call the legacy 01..18 board chain."""
+    try:
+        odds = ml_fetch_oddsapi_h2h()
+    except Exception:
+        odds = []
+    try:
+        overrides_df = _mlrd_load_overrides() if "_mlrd_load_overrides" in globals() else pd.DataFrame()
+    except Exception:
+        overrides_df = pd.DataFrame()
+
+    games = {}
+    for p in board or []:
+        if not isinstance(p, dict):
+            continue
+        a, h = ml_sides(p.get("matchup") or p.get("Matchup"))
+        a, h = ml_canonical_abbr(a), ml_canonical_abbr(h)
+        team = ml_canonical_abbr(p.get("team") or p.get("Team") or p.get("Pitcher Team"))
+        if not a or not h or not team:
+            continue
+        rec = games.setdefault(f"{a} @ {h}", {"away": a, "home": h, "pitchers": []})
+        rec["pitchers"].append(p)
+    # Keep market games visible even if a starter row is missing; they will be PASS/review.
+    for mg in odds or []:
+        a, h = ml_canonical_abbr(mg.get("away_abbr")), ml_canonical_abbr(mg.get("home_abbr"))
+        if a and h:
+            games.setdefault(f"{a} @ {h}", {"away": a, "home": h, "pitchers": []})
+
+    rows = []
+    for matchup, g in games.items():
+        away, home = g["away"], g["home"]
+        ps = g.get("pitchers") or []
+        try:
+            ap, hp = _ml_pick_pitchers_clean(ps, away, home)
+        except Exception:
+            ap = next((p for p in ps if ml_canonical_abbr(p.get("team") or p.get("Team")) == away), None) or {}
+            hp = next((p for p in ps if ml_canonical_abbr(p.get("team") or p.get("Team")) == home), None) or {}
+        ap = ap if isinstance(ap, dict) else {}; hp = hp if isinstance(hp, dict) else {}
+
+        try:
+            override = _mlrd_get_override({"Matchup": matchup}, overrides_df) if isinstance(overrides_df, pd.DataFrame) and not overrides_df.empty else {}
+        except Exception:
+            override = {}
+        market_game = _mlv3_odds_game(odds, away, home)
+        market = _mlv3_market_from_override_or_api(override, market_game)
+
+        aoff = _mlv3_offense_profile(away, ap, hp, override, "Away")
+        hoff = _mlv3_offense_profile(home, hp, ap, override, "Home")
+        asp = _mlv3_sp_profile(ap, override, "Away")
+        hsp = _mlv3_sp_profile(hp, override, "Home")
+        game_date = _mlv3_first(ap, ["game_date", "date", "Game Date"], _mlv3_first(hp, ["game_date", "date", "Game Date"], None))
+        abp = _mlv3_bullpen_profile(away, ap, game_date, override, "Away")
+        hbp = _mlv3_bullpen_profile(home, hp, game_date, override, "Home")
+
+        try:
+            park_factor, park_label, venue = ml_park_factor_from_pitcher_rows(ap, hp)
+        except Exception:
+            park_factor, park_label, venue = 1.0, "NEUTRAL", "Unknown venue"
+        weather_override = _mlv3_num((override or {}).get("Park Weather Factor"), None)
+        if weather_override is not None:
+            park_factor = float(clamp(weather_override, 0.85, 1.20)); park_label = "REAL_DATA_OVERRIDE"
+
+        aruns, actx = _mlv3_expected_runs(away, ap, hp, aoff, hsp, hbp, park_factor, False)
+        hruns, hctx = _mlv3_expected_runs(home, hp, ap, hoff, asp, abp, park_factor, True)
+        probs = _mlv3_poisson_probs(aruns, hruns)
+        raw_away, raw_home = probs["away_ml"], probs["home_ml"]
+
+        missing = []
+        risks = []
+        supports = []
+        if not asp.get("name") or asp.get("name") == "—": missing.append("away_starter")
+        if not hsp.get("name") or hsp.get("name") == "—": missing.append("home_starter")
+        if asp.get("name") == hsp.get("name") and asp.get("name") not in {"", "—"}: risks.append("DUPLICATE_STARTER")
+        if not asp.get("confirmed") or not hsp.get("confirmed"): risks.append("STARTER_NOT_CONFIRMED")
+        if not aoff.get("available"): missing.append("away_offense")
+        if not hoff.get("available"): missing.append("home_offense")
+        if not abp.get("available"): missing.append("away_bullpen")
+        if not hbp.get("available"): missing.append("home_bullpen")
+        if not market.get("available"): missing.append("market_odds")
+        if "starter" in " ".join(missing): risks.append("MISSING_STARTER")
+
+        # Four-family completeness. Lineup confirmation improves offense quality but is not a separate fifth family.
+        offense_q = (aoff.get("quality", 0) + hoff.get("quality", 0)) / 2.0
+        starter_q = (asp.get("quality", 0) + hsp.get("quality", 0)) / 2.0
+        bullpen_q = (abp.get("quality", 0) + hbp.get("quality", 0)) / 2.0
+        context_q = 95.0 if market.get("available") else 55.0
+        quality = int(round(clamp(0.30 * offense_q + 0.30 * starter_q + 0.25 * bullpen_q + 0.15 * context_q, 20, 100)))
+        cal_away, cal_home, pre_cal_away, shrink_used = _mlv3_calibrate_pair(raw_away, market, quality)
+        pick_team = away if cal_away >= cal_home else home
+        pick_code = "AWAY" if pick_team == away else "HOME"
+        pick_prob = cal_away if pick_team == away else cal_home
+        raw_pick_prob = raw_away if pick_team == away else raw_home
+        run_gap = abs(hruns - aruns)
+        tier, value_edge, market_agrees = _mlv3_clean_tier(pick_code, pick_prob, raw_pick_prob, run_gap, market, quality, missing, risks)
+
+        if market.get("available"):
+            selected_market = market.get("away_prob") if pick_team == away else market.get("home_prob")
+            if selected_market is not None and selected_market >= 50: supports.append("market confirms side")
+            elif selected_market is not None: risks.append("MARKET_OPPOSES_MODEL")
+        else:
+            risks.append("NO_MARKET_CONFIRMATION")
+        if run_gap >= 0.75: supports.append("projected-run separation")
+        elif run_gap < 0.30: risks.append("THIN_RUN_EDGE")
+        if (asp.get("strength") if pick_team == away else hsp.get("strength")) - (hsp.get("strength") if pick_team == away else asp.get("strength")) >= 4:
+            supports.append("starter family edge")
+        if (abp.get("strength") if pick_team == away else hbp.get("strength")) - (hbp.get("strength") if pick_team == away else abp.get("strength")) >= 4:
+            supports.append("bullpen family edge")
+
+        final_status = "STRONG ML" if tier == "OFFICIAL ML" else "LEAN ML" if tier == "PLAYABLE ML" else "MODEL LEAN" if tier in {"LEAN / TRACK ML", "MODEL ONLY / TRACK"} else "PASS"
+        grade = f"🔥 ML EDGE — {pick_team}" if tier == "OFFICIAL ML" else f"✅ ML LEAN — {pick_team}" if tier in {"PLAYABLE ML", "LEAN / TRACK ML", "MODEL ONLY / TRACK"} else f"🚫 PASS ML — {pick_team}"
+        rating = f"{tier.replace(' ML','')} {pick_prob:.0f}%"
+        selected_price = market.get("away_price") if pick_team == away else market.get("home_price")
+        fair_odds = _ow_american_from_prob(pick_prob) if "_ow_american_from_prob" in globals() else ""
+        cover_lean = f"{pick_team} CVR +1.5"
+        cover_prob = probs["away_p15"] if pick_team == away else probs["home_p15"]
+        blowout_prob = probs["away_m15"] if pick_team == away else probs["home_m15"]
+        blowout_tier = "BLOWOUT" if blowout_prob >= 55 else "COVER_EDGE" if blowout_prob >= 43 else "NO_BLOWOUT_EDGE"
+
+        # Clean row: all displayed score/probability/tier fields refer to the same four-family model.
+        row = {
+            "Matchup": matchup, "Pick": pick_team, "ML Official Pick": pick_team, "ML Final Pick": pick_team,
+            "Status": final_status, "ML Final Status": final_status, "ML Grade": grade, "ML Official Tier": tier,
+            "ML Card Rating": rating, "ML Card Rating Score": round(pick_prob, 1),
+            "ML Confidence %": round(pick_prob, 1), "ML True Win Confidence %": round(pick_prob, 1), "ML Final Confidence %": round(pick_prob, 1),
+            "ML Raw Model Away %": round(raw_away, 1), "ML Raw Model Home %": round(raw_home, 1),
+            "Away Model %": round(raw_away, 1), "Home Model %": round(raw_home, 1),
+            "Away Market %": None if not market.get("available") else round(float(market.get("away_prob")), 1),
+            "Home Market %": None if not market.get("available") else round(float(market.get("home_prob")), 1),
+            "Away Price": market.get("away_price"), "Home Price": market.get("home_price"),
+            "ML Card Away Price": market.get("away_price") if market.get("away_price") is not None else "",
+            "ML Card Home Price": market.get("home_price") if market.get("home_price") is not None else "",
+            "ML Market Available": bool(market.get("available")), "ML Market Source": market.get("source"),
+            "ML Market Agreement": bool(market_agrees), "ML Value Edge %": "" if value_edge is None else round(float(value_edge), 1),
+            "ML Card Value Edge %": "" if value_edge is None else round(float(value_edge), 1),
+            "Projected Score": f"{away} {aruns:.1f} - {home} {hruns:.1f}", "Expected Score": f"{away} {aruns:.1f} - {home} {hruns:.1f}",
+            "Away Projected Runs": round(aruns, 2), "Home Projected Runs": round(hruns, 2),
+            "Away Expected Runs": round(aruns, 2), "Home Expected Runs": round(hruns, 2),
+            "Score Edge": round(run_gap, 2), "Expected Run Differential": round(hruns - aruns, 2), "Score Pick": away if aruns >= hruns else home,
+            "ML Card Away Projected Runs": round(aruns, 1), "ML Card Home Projected Runs": round(hruns, 1),
+            "ML Card Away Win %": round(cal_away, 1), "ML Card Home Win %": round(cal_home, 1),
+            "ML Card Best Play": f"{pick_team} ML", "ML Card Best Play Prob %": round(pick_prob, 1),
+            "ML Card Fair Odds": fair_odds, "ML Card Market Price": "" if selected_price is None else int(selected_price),
+            "ML Card Cover Lean": cover_lean, "ML Card Cover Prob %": round(float(cover_prob), 1),
+            "ML Correct Cover Lean": cover_lean, "ML Correct Cover Prob %": round(float(cover_prob), 1), "ML Cover Side Check": "CLEAN_POISSON",
+            "ML Card Total Pick": "NO TOTAL", "ML Card Total Prob %": "", "ML Card Total Mean": round(aruns + hruns, 2),
+            "ML Card Away +1.5 %": round(probs["away_p15"], 1), "ML Card Home +1.5 %": round(probs["home_p15"], 1),
+            "ML Card Away -1.5 %": round(probs["away_m15"], 1), "ML Card Home -1.5 %": round(probs["home_m15"], 1),
+            "ML Card Final Score Pick": away if aruns >= hruns else home, "ML Card Final Simulation Pick": pick_team, "ML Card Pick Consistency": "ALIGNED_CLEAN_ENGINE",
+            "Away SP": asp.get("name"), "Home SP": hsp.get("name"), "Away SP Strength": asp.get("strength"), "Home SP Strength": hsp.get("strength"),
+            "Away SP RA9": asp.get("ra9"), "Home SP RA9": hsp.get("ra9"), "Away SP IP": asp.get("ip"), "Home SP IP": hsp.get("ip"),
+            "Away Bullpen": abp.get("strength"), "Home Bullpen": hbp.get("strength"), "Away Bullpen RA9": abp.get("ra9"), "Home Bullpen RA9": hbp.get("ra9"),
+            "Away Bullpen Usage": abp.get("usage_label"), "Home Bullpen Usage": hbp.get("usage_label"),
+            "Away Team wRC+": aoff.get("wrc"), "Home Team wRC+": hoff.get("wrc"),
+            "Away Lineup Strength": aoff.get("quality"), "Home Lineup Strength": hoff.get("quality"),
+            "Away BaseRuns/G": aoff.get("baseruns_pg"), "Home BaseRuns/G": hoff.get("baseruns_pg"),
+            "Away Offense Center": aoff.get("offense_runs"), "Home Offense Center": hoff.get("offense_runs"),
+            "Park": venue, "Park Factor": round(float(park_factor), 3), "Park Label": park_label,
+            "ML Quality Score": quality, "ML Data Completeness %": quality,
+            "ML Missing Data": "; ".join(dict.fromkeys(missing)), "ML Risk Reasons": "; ".join(dict.fromkeys(risks)) or "signals aligned",
+            "ML Support Signals": "; ".join(dict.fromkeys(supports)),
+            "ML Calibration Pre-Shrink Away %": round(float(pre_cal_away), 1), "ML Calibration Shrink Used": round(float(shrink_used), 3),
+            "ML Calibration Basis": "THREE-SLATE_OVERCONFIDENCE_SHRINK + MARKET_CONFIRMATION_WHEN_AVAILABLE",
+            "ML Family Offense Away JSON": json.dumps(aoff, default=str), "ML Family Offense Home JSON": json.dumps(hoff, default=str),
+            "ML Family Starter Away JSON": json.dumps(asp, default=str), "ML Family Starter Home JSON": json.dumps(hsp, default=str),
+            "ML Family Bullpen Away JSON": json.dumps(abp, default=str), "ML Family Bullpen Home JSON": json.dumps(hbp, default=str),
+            "ML Family Context Away JSON": json.dumps(actx, default=str), "ML Family Context Home JSON": json.dumps(hctx, default=str),
+            "ML Score Brain Projected Score": f"{away} {aruns:.1f} - {home} {hruns:.1f}",
+            "ML Score Confidence Label": tier, "ML Score Confidence %": round(pick_prob, 1), "ML Score Brain Run Gap": round(run_gap, 2),
+            "ML Score Brain Total Runs": round(aruns + hruns, 2), "ML Score Brain Notes": "Canonical clean four-family run model",
+            "ML Blowout Tier": blowout_tier, "ML Blowout Score": round(float(blowout_prob), 1), "ML Blowout Run Gap": round(run_gap, 2),
+            "ML Blowout Runline -1.5 %": round(float(blowout_prob), 1),
+            "ML Real Data Override": "YES" if override else "NO", "ML Real Data Version": MONEYLINE_REAL_DATA_VERSION if "MONEYLINE_REAL_DATA_VERSION" in globals() else "",
+            "ML Version": MONEYLINE_CLEAN_CANONICAL_VERSION, "Moneyline V2.5 Version": MONEYLINE_CLEAN_CANONICAL_VERSION,
+            "ML Card Version": MONEYLINE_CLEAN_CANONICAL_VERSION, "Source": "CLEAN_CANONICAL + ODDSAPI" if market.get("available") else "CLEAN_CANONICAL MODEL ONLY",
+        }
+        rows.append(row)
+
+    out = pd.DataFrame(rows)
+    if not out.empty:
+        order = {"OFFICIAL ML": 0, "PLAYABLE ML": 1, "LEAN / TRACK ML": 2, "MODEL ONLY / TRACK": 3, "PASS ML": 4}
+        out["_mlv3_sort"] = out["ML Official Tier"].astype(str).map(lambda x: order.get(x, 9))
+        out["_mlv3_prob"] = pd.to_numeric(out["ML Card Best Play Prob %"], errors="coerce").fillna(-999)
+        out = out.sort_values(["_mlv3_sort", "_mlv3_prob"], ascending=[True, False]).drop(columns=["_mlv3_sort", "_mlv3_prob"])
+    return out
+
+
 # ============================================================
 # SINGLE PUBLIC FUNCTION BINDINGS
 # Historical implementations have unique names. Each public API is bound once.
@@ -61364,7 +61913,8 @@ if build_true_actuals_dataset is None:
 kproj_decision = globals().get('_impl_kproj_decision_05', globals().get('_impl_kproj_decision_04', globals().get('_impl_kproj_decision_03', globals().get('_impl_kproj_decision_02', globals().get('_impl_kproj_decision_01', None)))))
 if kproj_decision is None:
     raise RuntimeError("No implementation available for kproj_decision")
-ml_build_board = globals().get('_impl_ml_build_board_18', globals().get('_impl_ml_build_board_17', globals().get('_impl_ml_build_board_16', globals().get('_impl_ml_build_board_15', globals().get('_impl_ml_build_board_14', globals().get('_impl_ml_build_board_13', globals().get('_impl_ml_build_board_12', globals().get('_impl_ml_build_board_11', globals().get('_impl_ml_build_board_10', globals().get('_impl_ml_build_board_09', globals().get('_impl_ml_build_board_08', globals().get('_impl_ml_build_board_07', globals().get('_impl_ml_build_board_06', globals().get('_impl_ml_build_board_05', globals().get('_impl_ml_build_board_04', globals().get('_impl_ml_build_board_03', globals().get('_impl_ml_build_board_02', globals().get('_impl_ml_build_board_01', None))))))))))))))))))
+# Moneyline V3 clean engine is the one active public path. Legacy 01..18 remain audit-only.
+ml_build_board = _impl_ml_build_board_19
 if ml_build_board is None:
     raise RuntimeError("No implementation available for ml_build_board")
 ml_factor_summary = globals().get('_impl_ml_factor_summary_02', globals().get('_impl_ml_factor_summary_01', None))
@@ -61381,8 +61931,8 @@ if render_batter_fs_tab is None:
 # Shadow challenger layered on the protected Merge V2.6.10 canonical control.
 # This block never mutates the Merge control table/board in place.
 # =============================================================================
-UNDEFEATED_BETA_VERSION = "UNDEFEATED_BETA_V1_6_WORKLOAD_COHERENCE"
-SPORTS_ANALYSIS_BRAIN_VERSION = "SPORTS_ANALYSIS_BRAIN_V1_5_COMPONENT_REBUILD_2026_08_16"
+UNDEFEATED_BETA_VERSION = "UNDEFEATED_BETA_V1_7_RUNTIME_DATA_AUTHORITY"
+SPORTS_ANALYSIS_BRAIN_VERSION = "SPORTS_ANALYSIS_BRAIN_V1_7_RUNTIME_DATA_AUTHORITY_2026_08_16"
 UNDEFEATED_BETA_MODE = "SHADOW_CHALLENGER_NO_MERGE_PROMOTION"
 UB_BASELINE_CONTROL_VERSION = "MERGE_V2_6_10_PROTECTED_CONTROL"
 UB_DATA_DIR = os.path.join(STORAGE_DIR, "learning_data")
@@ -61408,8 +61958,8 @@ UB_CONFIG = {
     "recent_starter_min_ip": 4.0,
     "recent_starter_bf_per_ip_fallback": 4.15,
     "recent_starter_required_games": 2,
-    "recent_workload_gap_bf": 4.5,
-    "recent_workload_gap_ip": 1.25,
+    "recent_workload_gap_bf": 2.5,
+    "recent_workload_gap_ip": 0.75,
     "under_ceiling_watch_score": 55.0,
     "under_ceiling_veto_score": 70.0,
     "slate_imbalance_share": 0.78,
@@ -61446,7 +61996,7 @@ UB_CONFIG = {
     "pitch_trend_support_score": 68.0,
     "pitch_trend_elite_score": 80.0,
     "pitch_capacity_min_pc": 78.0,
-    "pitch_capacity_gap_bf": 3.0,
+    "pitch_capacity_gap_bf": 2.0,
     "pitch_capacity_max_center_move_bf": 4.25,
     "pitch_capacity_weight": 0.45,
     "manager_short_leash_capacity_multiplier": 0.35,
@@ -61474,10 +62024,10 @@ UB_CONFIG = {
     "current_state_weight_elite": 0.90,
     "current_state_weight_declining": 0.82,
     # V1.5 component-level blend: BF and K/BF receive separate evidence authority.
-    "component_kbf_authority_normal": 0.65,
-    "component_kbf_authority_strong": 0.82,
-    "component_kbf_authority_elite": 0.92,
-    "component_kbf_authority_declining": 0.82,
+    "component_kbf_authority_normal": 0.70,
+    "component_kbf_authority_strong": 0.85,
+    "component_kbf_authority_elite": 0.94,
+    "component_kbf_authority_declining": 0.85,
     "component_workload_authority_low": 0.25,
     "component_workload_authority_medium": 0.50,
     "component_workload_authority_high": 0.65,
@@ -61490,7 +62040,16 @@ UB_CONFIG = {
     "live_workload_l5_weight": 0.65,
     "live_workload_l10_weight": 0.35,
     "live_workload_center_authority": 0.65,
-    "live_workload_mismatch_bf": 2.5,
+    "live_workload_mismatch_bf": 1.75,
+    # V1.7: component authority can now follow verified independent workload evidence.
+    "component_workload_authority_event3": 0.88,
+    "component_workload_authority_event2": 0.76,
+    "component_workload_authority_summary": 0.68,
+    "component_workload_authority_ip_inferred": 0.58,
+    "runtime_workload_min_gap_bf": 0.75,
+    "runtime_workload_material_gap_bf": 1.50,
+    "runtime_workload_summary_l5_weight": 0.70,
+    "runtime_workload_summary_l10_weight": 0.30,
     "recency_decay_half_life_starts": 3.0,
     "recency_decay_max_starts": 10,
     "persistent_direction_min_history": 4,
@@ -62281,6 +62840,160 @@ def _ub_workload_distribution(p, row=None):
 
 
 
+# ---------------------------------------------------------------------------
+# V1.7 RUNTIME WORKLOAD AUTHORITY
+# The prior V1.6 plumbing could still land on the Merge workload when event-level
+# game_log fields were not present on the exact runtime object. This wrapper uses
+# an explicit evidence ladder and records where the independent BF/IP came from.
+# ---------------------------------------------------------------------------
+_ub_workload_distribution_v16 = _ub_workload_distribution
+
+
+def _ub_workload_distribution(p, row=None):
+    p = p or {}; row = row or {}
+    base = dict(_ub_workload_distribution_v16(p, row) or {})
+    if not base:
+        return base
+    if str(base.get("role_authority") or "") == "CURRENT_CONFIRMED_ROLE" and str(base.get("role") or "") in {"OPENER", "RELIEVER", "LIMITED_STARTER"}:
+        base["v17_independent_source"] = "CONFIRMED_SHORT_ROLE_AUTHORITY"
+        base["v17_authority_hint"] = float(UB_CONFIG["component_workload_authority_confirmed_role"])
+        base["v17_independent_available"] = True
+        return base
+
+    merge_bf = float(_ub_num(base.get("merge_bf"), DEFAULT_BF) or DEFAULT_BF)
+    merge_ip = _ub_num(base.get("merge_ip"), None)
+    games = _ub_history_games(p)
+    event_bf = [float(_ub_num(g.get("BF"), 0) or 0) for g in games[:8] if (_ub_num(g.get("BF"), None) or 0) > 0]
+    event_ip = [float(_ub_num(g.get("IP_float"), 0) or 0) for g in games[:8] if (_ub_num(g.get("IP_float"), None) or 0) > 0]
+    event_ratios = []
+    for g in games[:8]:
+        bf = _ub_num(g.get("BF"), None); ip = _ub_num(g.get("IP_float"), None)
+        if bf is not None and bf > 0 and ip is not None and ip > 0:
+            event_ratios.append(float(ip / bf))
+
+    history = p.get("k_history_context_v256") if isinstance(p.get("k_history_context_v256"), dict) else {}
+    l5 = history.get("L5") if isinstance(history.get("L5"), dict) else {}
+    l10 = history.get("L10") if isinstance(history.get("L10"), dict) else {}
+    l5_bf = _ub_num(l5.get("bf_avg"), None); l10_bf = _ub_num(l10.get("bf_avg"), None)
+    l5_ip = _ub_num(l5.get("ip_avg"), None); l10_ip = _ub_num(l10.get("ip_avg"), None)
+    live_l5_bf = _ub_num(_ub_first([row, p], ["APP97 Live L5 BF Median", "Live L5 BF Median", "L5 BF Median"], None), None)
+    live_l10_bf = _ub_num(_ub_first([row, p], ["APP97 Live L10 BF Median", "Live L10 BF Median", "L10 BF Median"], None), None)
+    live_l5_ip = _ub_num(_ub_first([row, p], ["APP97 Live L5 IP Avg", "Live L5 IP Avg", "L5 IP Avg"], None), None)
+
+    center = merge_bf
+    source = "MERGE_FALLBACK_NO_INDEPENDENT_WORKLOAD"
+    authority = float(UB_CONFIG["component_workload_authority_low"])
+    independent = False
+
+    if len(event_bf) >= 3:
+        recent3 = float(np.median(event_bf[:3]))
+        recent6 = float(np.median(event_bf[:6]))
+        center = 0.68 * recent3 + 0.32 * recent6
+        source = "EVENT_STARTS_3PLUS"
+        authority = float(UB_CONFIG["component_workload_authority_event3"])
+        independent = True
+    elif len(event_bf) == 2:
+        center = float(np.mean(event_bf[:2]))
+        source = "EVENT_STARTS_2"
+        authority = float(UB_CONFIG["component_workload_authority_event2"])
+        independent = True
+    else:
+        summary_l5 = live_l5_bf if live_l5_bf is not None else l5_bf
+        summary_l10 = live_l10_bf if live_l10_bf is not None else l10_bf
+        summary_vals = [x for x in (summary_l5, summary_l10) if x is not None and x > 0]
+        if summary_vals:
+            if summary_l5 is not None and summary_l10 is not None:
+                center = float(UB_CONFIG["runtime_workload_summary_l5_weight"]) * summary_l5 + float(UB_CONFIG["runtime_workload_summary_l10_weight"]) * summary_l10
+            else:
+                center = float(summary_vals[0])
+            source = "SUMMARY_L5_L10_BF"
+            authority = float(UB_CONFIG["component_workload_authority_summary"])
+            independent = True
+        else:
+            ip_center = None
+            if event_ip:
+                ip_center = float(np.median(event_ip[:5]))
+            elif live_l5_ip is not None and live_l5_ip > 0:
+                ip_center = float(live_l5_ip)
+            elif l5_ip is not None and l5_ip > 0:
+                ip_center = float(l5_ip)
+            if ip_center is not None:
+                if event_ratios:
+                    ip_per_bf = float(np.median(event_ratios))
+                    bf_per_ip = 1.0 / max(ip_per_bf, 1e-9)
+                else:
+                    bf_per_ip = float(UB_CONFIG.get("recent_starter_bf_per_ip_fallback", 4.15))
+                center = ip_center * bf_per_ip
+                source = "RECENT_IP_INFERRED_BF"
+                authority = float(UB_CONFIG["component_workload_authority_ip_inferred"])
+                independent = True
+
+    # Pitch-count capacity corroborates but never acts as a second workload family.
+    cap_bf = _ub_num(base.get("pitch_capacity_bf"), None)
+    if independent and cap_bf is not None and cap_bf > 0 and abs(cap_bf - center) <= 4.5:
+        center = 0.82 * center + 0.18 * cap_bf
+        source += "+PITCH_CAPACITY_CORROBORATION"
+
+    center = float(clamp(center, 6.0, 31.0))
+    gap = center - merge_bf
+    min_gap = float(UB_CONFIG["runtime_workload_min_gap_bf"])
+    if not independent or abs(gap) < min_gap:
+        # Keep biological workload stable when the independent evidence truly agrees.
+        center = float(base.get("bf_p50") or merge_bf)
+        if independent:
+            source += "+ALIGNED_WITH_MERGE"
+    else:
+        # Build a fresh independent distribution around the current center. Component blend
+        # performs the only regularization back toward Merge.
+        spread = float(np.std(event_bf[:6], ddof=1)) if len(event_bf[:6]) >= 2 else 2.6
+        spread = float(clamp(spread, 1.6, 4.2))
+        p10 = center - max(3.0, 1.28 * spread)
+        p25 = center - max(1.5, 0.67 * spread)
+        p75 = center + max(1.5, 0.67 * spread)
+        p90 = center + max(3.0, 1.28 * spread)
+        base.update({
+            "bf_p10": round(float(clamp(p10, 4.0, 31.0)), 2),
+            "bf_p25": round(float(clamp(p25, 4.0, 31.0)), 2),
+            "bf_p50": round(center, 2),
+            "bf_p75": round(float(clamp(p75, center, 32.0)), 2),
+            "bf_p90": round(float(clamp(p90, center, 33.0)), 2),
+        })
+
+    # IP/BF comes from actual recent starts when possible, not from the old Merge IP center.
+    if event_ratios:
+        ip_per_bf = float(clamp(np.median(event_ratios), 0.16, 0.33))
+    elif live_l5_ip is not None and (live_l5_bf or l5_bf):
+        denom = live_l5_bf if live_l5_bf is not None else l5_bf
+        ip_per_bf = float(clamp(live_l5_ip / max(denom, 1e-9), 0.16, 0.33))
+    else:
+        ip_per_bf = float(_ub_num(base.get("ip_per_bf"), 0.245) or 0.245)
+    base["ip_per_bf"] = round(ip_per_bf, 4)
+    for bf_key, ip_key in (("bf_p10","ip_p10"),("bf_p25","ip_p25"),("bf_p50","ip_p50"),("bf_p75","ip_p75"),("bf_p90","ip_p90")):
+        if base.get(bf_key) is not None:
+            base[ip_key] = round(float(base[bf_key]) * ip_per_bf, 2)
+
+    material = abs(gap) >= float(UB_CONFIG["runtime_workload_material_gap_bf"])
+    if independent:
+        base["workload_mismatch_score"] = round(max(float(_ub_num(base.get("workload_mismatch_score"), 0.0) or 0.0), float(clamp(24.0 + abs(gap) * 14.0, 0.0, 100.0))), 1)
+        base["workload_escape_score"] = round(max(float(_ub_num(base.get("workload_escape_score"), 0.0) or 0.0), float(clamp(38.0 + abs(gap) * 10.0, 0.0, 100.0))), 1)
+        if source.startswith("EVENT_STARTS_3PLUS"):
+            base["confidence"] = "HIGH"
+        elif base.get("confidence") == "LOW":
+            base["confidence"] = "MEDIUM"
+        reasons = list(base.get("workload_mismatch_reasons") or [])
+        if material:
+            reasons.append(f"V1.7 independent workload {center:.1f} BF vs Merge {merge_bf:.1f} ({source})")
+        base["workload_mismatch_reasons"] = list(dict.fromkeys(reasons))
+
+    base["v17_independent_source"] = source
+    base["v17_authority_hint"] = round(float(authority), 3)
+    base["v17_independent_available"] = bool(independent)
+    base["v17_gap_bf"] = round(float(center - merge_bf), 2)
+    base["note"] = str(base.get("note") or "") + f"; V1.7 source {source}; independent BF {center:.1f}; gap {center-merge_bf:+.1f}"
+    return base
+
+
+
 
 
 def _ub_recent_skill_profile(p):
@@ -62584,6 +63297,44 @@ def _ub_batter_rate(row):
     return None, "MISSING", 0.0
 
 
+
+
+_ub_recent_skill_profile_v16 = _ub_recent_skill_profile
+
+
+def _ub_recent_skill_profile(p):
+    """V1.7: preserve event-level logic, but recover K/BF from serialized L3/L5/L10 summaries when event rows are thin."""
+    out = dict(_ub_recent_skill_profile_v16(p) or {})
+    history = (p or {}).get("k_history_context_v256") if isinstance((p or {}).get("k_history_context_v256"), dict) else {}
+    for label, key in (("l3", "L3"), ("l5", "L5"), ("l10", "L10")):
+        existing = out.get(label) if isinstance(out.get(label), dict) else {}
+        if existing.get("rate") is None:
+            summ = history.get(key) if isinstance(history.get(key), dict) else {}
+            rate = _ub_rate(summ.get("k_pct"), None)
+            sample = int(_ub_num(summ.get("sample"), 0) or 0)
+            bf_avg = _ub_num(summ.get("bf_avg"), None)
+            if rate is not None:
+                existing = dict(existing)
+                existing["rate"] = rate
+                existing["starts"] = sample
+                existing["BF"] = 0.0 if bf_avg is None else float(bf_avg) * sample
+                existing["K"] = None if existing["BF"] <= 0 else rate * existing["BF"]
+                existing["source"] = "V256_SUMMARY_FALLBACK"
+                out[label] = existing
+    # If the original status had no event support, let a real L5 summary establish absolute current skill.
+    l5 = out.get("l5") or {}
+    if str(out.get("status") or "NONE") == "NONE" and l5.get("rate") is not None and (l5.get("BF") or 0) >= 40:
+        rate = float(l5["rate"])
+        if rate >= 0.27:
+            out["score"] = max(float(out.get("score") or 50.0), 70.0)
+            out["status"] = "SUPPORTED"
+            out["support_families"] = max(int(out.get("support_families") or 0), 1)
+            reasons = list(out.get("reasons") or []); reasons.append(f"V1.7 sustained summary L5 K/BF {rate*100:.1f}%")
+            out["reasons"] = list(dict.fromkeys(reasons))
+        elif rate <= 0.17:
+            out["score"] = min(float(out.get("score") or 50.0), 38.0)
+    return out
+
 def _ub_lineup_profile(p, row, expected_bf):
     p = p or {}
     row = row or {}
@@ -62791,6 +63542,39 @@ def _ub_recency_decay_kbf(p):
     }
 
 
+
+
+_ub_recency_decay_kbf_v16 = _ub_recency_decay_kbf
+
+
+def _ub_recency_decay_kbf(p, row=None):
+    """V1.7 summary fallback without double-counting overlapping windows."""
+    out = dict(_ub_recency_decay_kbf_v16(p) or {})
+    if int(out.get("starts") or 0) >= 2 and out.get("rate") is not None:
+        out["source"] = "EVENT_STARTS"
+        return out
+    history = (p or {}).get("k_history_context_v256") if isinstance((p or {}).get("k_history_context_v256"), dict) else {}
+    l5 = history.get("L5") if isinstance(history.get("L5"), dict) else {}
+    l10 = history.get("L10") if isinstance(history.get("L10"), dict) else {}
+    r5 = _ub_rate(l5.get("k_pct"), None); r10 = _ub_rate(l10.get("k_pct"), None)
+    if r5 is None and r10 is None:
+        out["source"] = "NO_RECENT_KBF"
+        return out
+    if r5 is not None and r10 is not None:
+        rate = 0.72 * r5 + 0.28 * r10
+    else:
+        rate = r5 if r5 is not None else r10
+    sample5 = int(_ub_num(l5.get("sample"), 0) or 0); bf5 = _ub_num(l5.get("bf_avg"), None)
+    sample10 = int(_ub_num(l10.get("sample"), 0) or 0); bf10 = _ub_num(l10.get("bf_avg"), None)
+    # L5 and L10 overlap. Use the larger effective sample once, not L5+L10.
+    eff_bf = max((bf5 or 0.0) * sample5, (bf10 or 0.0) * sample10)
+    out.update({
+        "rate": float(rate), "weighted_bf": float(eff_bf), "raw_bf": float(eff_bf),
+        "raw_k": float(rate * eff_bf) if eff_bf > 0 else 0.0,
+        "starts": max(sample5, sample10), "source": "V256_L5_L10_SUMMARY_FALLBACK",
+    })
+    return out
+
 def _ub_current_state_skill_profile(p, row, recent, workload, base_skill):
     """Independent current-state K/BF rebuild with grouped evidence ownership.
 
@@ -62802,7 +63586,7 @@ def _ub_current_state_skill_profile(p, row, recent, workload, base_skill):
     history = p.get("k_history_context_v256") if isinstance(p.get("k_history_context_v256"), dict) else {}
     prior = _ub_independent_true_talent_kbf(p,row,fallback=base_skill)
     base = float(prior.get("kbf") or LEAGUE_AVG_K)
-    decay = _ub_recency_decay_kbf(p)
+    decay = _ub_recency_decay_kbf(p, row)
     recent_consensus = decay.get("rate")
 
     def hr(*keys):
@@ -63439,6 +64223,10 @@ def _ub_component_blend_profile(merge_projection, fixed, workload, recent, regim
     if workload.get("recent_starter_authority"): bf_auth=max(bf_auth,float(UB_CONFIG["component_workload_authority_recent_starter"]))
     if workload.get("workload_mismatch_score",0)>=65: bf_auth=max(bf_auth,float(UB_CONFIG["component_workload_authority_mismatch"]))
     if workload.get("role_authority")=="CURRENT_CONFIRMED_ROLE": bf_auth=max(bf_auth,float(UB_CONFIG["component_workload_authority_confirmed_role"]))
+    runtime_hint = _ub_num(workload.get("v17_authority_hint"), None)
+    runtime_gap = abs(float(_ub_num(workload.get("v17_gap_bf"), 0.0) or 0.0))
+    if runtime_hint is not None and workload.get("v17_independent_available") and runtime_gap >= float(UB_CONFIG["runtime_workload_min_gap_bf"]):
+        bf_auth=max(bf_auth,float(runtime_hint))
     bf_auth=float(clamp(bf_auth,0.15,0.95))
 
     blended_bf=merge_bf*(1.0-bf_auth)+independent_bf*bf_auth
@@ -63626,6 +64414,10 @@ def _ub_build_row(row, p):
         "UB Live Workload Center": workload.get("live_workload_center"),
         "UB Live L5 BF": workload.get("live_l5_bf"), "UB Live L10 BF": workload.get("live_l10_bf"),
         "UB Live L5 IP": workload.get("live_l5_ip"), "UB Live L5 Pitch": workload.get("live_l5_pitch"),
+        "UB Runtime Workload Source": workload.get("v17_independent_source"),
+        "UB Runtime Workload Authority Hint": workload.get("v17_authority_hint"),
+        "UB Runtime Workload Available": bool(workload.get("v17_independent_available")),
+        "UB Runtime Workload Gap BF": workload.get("v17_gap_bf"),
         "UB Raw Component Projection": round(float(components.get("raw_component_projection") or projection),3),
         "UB Component Math Status": components.get("math_status"),
         "UB Persistent Direction Status": direction_audit.get("status"), "UB Persistent Direction Sample": direction_audit.get("sample"),
@@ -63732,7 +64524,7 @@ def _ub_build_row(row, p):
     }
     output.update(_brain_profile(p, row, output))
     output["UB Official Tier"] = output.get("Best Play Tier")
-    output["UB Pregame Feature Persistence"] = "COMPLETE_V1_5_COMPONENT_REBUILD"
+    output["UB Pregame Feature Persistence"] = "COMPLETE_V1_7_RUNTIME_DATA_AUTHORITY"
     output["UB Snapshot ID"] = _ub_hash_payload({
         "date": output.get("Slate Date"), "game": output.get("GamePk"), "pitcher": output.get("Pitcher ID") or output.get("Pitcher"),
         "line": line, "stage": output.get("UB Lineup Stage"), "version": UNDEFEATED_BETA_VERSION,
@@ -63789,6 +64581,52 @@ def _ub_apply_slate_imbalance_guard(frame):
     return out
 
 
+def _ub_beta_signal_signature(board):
+    """Cache fingerprint for every pregame input that can move Beta.
+
+    V1.6 reused the canonical K signature, which did not include recent game-log K/BF,
+    pitch counts, APP97 live workload summaries, or current stuff fields. That could
+    return a stale challenger even after the underlying Beta evidence changed.
+    """
+    rows = []
+    for p in board or []:
+        if not isinstance(p, dict):
+            continue
+        history = p.get("k_history_context_v256") if isinstance(p.get("k_history_context_v256"), dict) else {}
+        game_sig = []
+        for g in (history.get("game_log") or [])[:10]:
+            if isinstance(g, dict):
+                game_sig.append((
+                    str(g.get("date") or g.get("Date") or ""),
+                    _ub_num(g.get("Ks"), None), _ub_num(g.get("BF"), None), str(g.get("IP") or ""),
+                    _ub_num(g.get("pitch_count") if g.get("pitch_count") is not None else g.get("Pitches"), None),
+                    str(g.get("role") or g.get("Role") or ""),
+                ))
+        summary_sig = []
+        for key in ("L3", "L5", "L10"):
+            s = history.get(key) if isinstance(history.get(key), dict) else {}
+            summary_sig.append((key, _ub_num(s.get("k_pct"), None), _ub_num(s.get("bf_avg"), None), _ub_num(s.get("ip_avg"), None), _ub_num(s.get("pitch_avg"), None)))
+        rows.append((
+            normalize_name(p.get("pitcher") or p.get("Pitcher") or ""), str(p.get("matchup") or p.get("Matchup") or ""),
+            _ub_num(_ub_first([p], ["baseball_projection", "projection"], None), None),
+            _ub_num(_ub_first([p], ["line", "underdog_line"], None), None),
+            _ub_num(_ub_first([p], ["expected_bf", "APP97 Reconciled Expected BF", "Exp BF"], None), None),
+            _ub_num(_ub_first([p], ["projected_ip", "IP PROJ", "Projected IP", "IP Projection"], None), None),
+            _ub_num(_ub_first([p], ["APP97 Live L5 BF Median", "Live L5 BF Median"], None), None),
+            _ub_num(_ub_first([p], ["APP97 Live L10 BF Median", "Live L10 BF Median"], None), None),
+            _ub_num(_ub_first([p], ["APP97 Live L5 IP Avg", "Live L5 IP Avg"], None), None),
+            _ub_num(_ub_first([p], ["APP97 Live L5 Pitch Median", "Live L5 Pitch Median", "projected_pitches"], None), None),
+            _ub_num(_ub_first([p], ["savant_k_pct", "pitcher_k", "Pitcher K%"], None), None),
+            _ub_num(_ub_first([p], ["statcast_whiff", "Savant Custom Whiff%", "Whiff%"], None), None),
+            _ub_num(_ub_first([p], ["statcast_csw", "Savant Custom CSW%", "CSW%"], None), None),
+            _ub_num(_ub_first([p], ["putaway_pct", "PutAway%"], None), None),
+            str(p.get("probable_role") or p.get("pitcher_role") or p.get("role") or ""),
+            tuple(game_sig), tuple(summary_sig),
+        ))
+    return tuple(rows)
+
+
+
 
 def build_undefeated_beta_table(board):
     try:
@@ -63805,7 +64643,7 @@ def build_undefeated_beta_table(board):
     canonical = build_k_projection_pipeline(board)
     if canonical is None or not isinstance(canonical, pd.DataFrame) or canonical.empty:
         return pd.DataFrame()
-    signature = _canonical_k_board_signature(board) if "_canonical_k_board_signature" in globals() else _ub_hash_payload(canonical[[c for c in ["Pitcher", "Canonical Final K Projection", "Canonical Line"] if c in canonical.columns]].to_dict("records"))
+    signature = _ub_beta_signal_signature(board) if "_ub_beta_signal_signature" in globals() else _canonical_k_board_signature(board)
     cache_key = _ub_hash_payload({"signature": str(signature), "version": UNDEFEATED_BETA_VERSION})
     cached = UB_RUNTIME_CACHE.get(cache_key)
     if isinstance(cached, pd.DataFrame):
@@ -63863,7 +64701,7 @@ def _ub_apply_beta_to_k_frame(base_df, beta_df):
         out.at[idx, "K Sim Current Side Prob %"] = prob
         out.at[idx, "Current Side Prob %"] = prob
         out.at[idx, "Confidence %"] = prob
-        # V1.6: visible workload is the same blended workload used by final K math.
+        # V1.7: visible workload is the same blended runtime workload used by final K math.
         final_bf = ub.get("UB Blended BF") if ub.get("UB Blended BF") is not None else ub.get("UB BF P50")
         final_ip = ub.get("UB Blended IP") if ub.get("UB Blended IP") is not None else ub.get("UB IP P50")
         out.at[idx, "APP97 Reconciled Expected BF"] = final_bf
@@ -64304,7 +65142,7 @@ def render_undefeated_beta_tab(board, integrated=False):
             "UB Hist Line Bucket", "UB Hist Line Plays", "UB Hist Line Win %", "UB Hist Line Avg Error", "UB Hist Line MAE",
             "UB Hist False Over Guard", "UB Hist 5.5 Over Difficulty", "UB Hist Strong Over Exception",
             "UB Hist 3.5 Breakout Under Risk", "UB Hist 4.5 Control Bucket", "UB Hist Ranking Penalty", "UB Hist Projection Adjustment K",
-            "UB Last Pitch Count", "UB L3 Pitch Count", "UB Pitch Count Ramp State", "UB Regime", "UB Role", "UB Role Authority",
+            "UB Last Pitch Count", "UB L3 Pitch Count", "UB Pitch Count Ramp State", "UB Runtime Workload Source", "UB Runtime Workload Gap BF", "UB Runtime Workload Authority Hint", "UB Runtime Workload Available", "UB Regime", "UB Role", "UB Role Authority",
             "UB Core Blend Weight", "UB Coherence Adjustment K", "UB Coherence Reasons", "UB Slate Imbalance Flag", "UB Slate Dominant Side", "UB Slate Dominant Share %", "UB Slate Guard Applied",
             "Sports Brain Side", "Sports Brain Score", "Best Play Score", "Best Play Tier", "Sports Brain Verdict", "Brain Main Support", "Brain Main Risk",
         ] if c in beta.columns]
