@@ -775,7 +775,7 @@ except ModuleNotFoundError as _validation_import_error:
             "compatibility_fallback": True,
         }
 
-APP_VERSION = "ONE WAY PICKZ K UPSIDE + UNDEFEATED BETA V1.6 WORKLOAD COHERENCE 2026-08-16"
+APP_VERSION = "ONE WAY PICKZ K UPSIDE + UNDEFEATED BETA V1.9 TARGETED COMPONENTS + ML PHASE2.1 2026-08-16"
 FULL_APP_UPDATE_MARKER = "FULL_APP_CANONICAL_K_PIPELINE_2026_07_30"
 MERGE_V269_SAFE_UPDATE_MARKER = "V269_SAFE_SAVANT_ORDER_SHADOW_NO_CONTROL_PROJECTION_CHANGE"
 MERGE_V2610_DATA_HARDENING_MARKER = "V2610_MLBAM_HAND_FAIL_CLOSED_AUX_LAST_GOOD_NO_PRODUCTION_PROMOTION"
@@ -61313,7 +61313,7 @@ def _impl_render_first_inning_k_tab_01(board):
 # - Legacy _impl_ml_build_board_01..18 remain available for audit only; the public binding below
 #   points directly to this clean engine.
 # =============================================================================
-MONEYLINE_CLEAN_CANONICAL_VERSION = "MONEYLINE_V3_CLEAN_CANONICAL_2026_08_16"
+MONEYLINE_CLEAN_CANONICAL_VERSION = "MONEYLINE_V3_CLEAN_CANONICAL_PHASE2_1_2026_08_16"
 ML_CLEAN_CALIBRATION_SHRINK_MARKET = 0.62
 ML_CLEAN_CALIBRATION_SHRINK_MODEL_ONLY = 0.52
 ML_CLEAN_MARKET_BLEND_WEIGHT = 0.25
@@ -61843,6 +61843,259 @@ def _impl_ml_build_board_19(board):
     return out
 
 
+
+# =============================================================================
+# MONEYLINE PHASE 2.1 — TARGETED PRESERVATION UPGRADE
+# Phase 2 clean four-family engine stays intact. This layer only:
+#   1) reconciles starting-pitcher IP with verified recent full-start usage; and
+#   2) separates the pure baseball model winner from the market-calibrated winner.
+# Market can confirm/downgrade by default. A market-driven side flip requires a thin
+# raw model AND at least two independent baseball-family votes for the market side.
+# =============================================================================
+ML_PHASE21_VERSION = "MONEYLINE_PHASE2_1_TARGETED_PRESERVATION_2026_08_16"
+ML_PHASE21_SP_RECENT_AUTH_3PLUS = 0.55
+ML_PHASE21_SP_RECENT_AUTH_2 = 0.42
+ML_PHASE21_SP_RECENT_AUTH_1 = 0.25
+ML_PHASE21_SP_MAX_IP_MOVE = 0.90
+ML_PHASE21_SP_MIN_IP_GAP = 0.45
+ML_PHASE21_MARKET_FLIP_MAX_RAW_MODEL = 53.5
+ML_PHASE21_MARKET_FLIP_MIN_NOVIG_GAP = 4.0
+ML_PHASE21_MARKET_FLIP_MIN_BASEBALL_FAMILIES = 2
+
+_mlv3_sp_profile_phase2 = _mlv3_sp_profile
+
+
+def _ml_phase21_recent_full_starter_ip(row):
+    """Pregame-only recent starter IP center. Never reads results from the current game."""
+    row = row if isinstance(row, dict) else {}
+    history = row.get("k_history_context_v256") if isinstance(row.get("k_history_context_v256"), dict) else {}
+    games = history.get("game_log") if isinstance(history.get("game_log"), list) else []
+    full = []
+    for game in games[:8]:
+        if not isinstance(game, dict):
+            continue
+        try:
+            ip = game.get("IP_float")
+            if ip is None:
+                ip = baseball_ip_to_float(game.get("IP"))
+            ip = _mlv3_num(ip, None)
+            bf = _mlv3_num(game.get("BF") if game.get("BF") is not None else game.get("TBF"), None)
+            pc = _mlv3_num(game.get("Pitches") if game.get("Pitches") is not None else game.get("pitch_count"), None)
+        except Exception:
+            ip = bf = pc = None
+        if ip is None or ip < 4.0:
+            continue
+        if bf is not None and bf < 18.0:
+            continue
+        full.append({"ip": float(ip), "bf": bf, "pc": pc})
+    if len(full) >= 3:
+        recent3 = float(np.median([g["ip"] for g in full[:3]]))
+        recent5 = float(np.median([g["ip"] for g in full[:5]]))
+        center = 0.70 * recent3 + 0.30 * recent5
+        authority = ML_PHASE21_SP_RECENT_AUTH_3PLUS
+        source = "RECENT_FULL_STARTS_3PLUS"
+    elif len(full) == 2:
+        center = float(np.mean([g["ip"] for g in full[:2]]))
+        authority = ML_PHASE21_SP_RECENT_AUTH_2
+        source = "RECENT_FULL_STARTS_2"
+    elif len(full) == 1:
+        center = float(full[0]["ip"])
+        authority = ML_PHASE21_SP_RECENT_AUTH_1
+        source = "RECENT_FULL_START_1"
+    else:
+        live = _mlv3_num(_mlv3_first(row, ["APP97 Live L5 IP Avg", "Live L5 IP Avg", "L5 IP Avg"], None), None)
+        if live is None or live <= 0:
+            return {"available": False, "center": None, "authority": 0.0, "source": "NO_RECENT_FULL_START_IP", "sample": 0}
+        center = float(live)
+        authority = 0.30
+        source = "LIVE_L5_IP_SUMMARY"
+    return {"available": True, "center": round(center, 3), "authority": float(authority), "source": source, "sample": len(full)}
+
+
+def _mlv3_sp_profile(row, override=None, side="Away"):
+    """Phase 2.1 SP profile: Phase 2 run-prevention math + modest verified workload reconciliation."""
+    out = dict(_mlv3_sp_profile_phase2(row, override, side) or {})
+    if not out:
+        return out
+    base_ip = float(_mlv3_num(out.get("ip"), 5.2) or 5.2)
+    role_flag = str(out.get("role_flag") or "").upper()
+    short_role = any(token in role_flag for token in ("LIMIT", "OPENER", "SHORT", "BULK"))
+    recent = _ml_phase21_recent_full_starter_ip(row)
+    final_ip = base_ip
+    move = 0.0
+    if recent.get("available") and not short_role:
+        gap = float(recent.get("center")) - base_ip
+        if abs(gap) >= ML_PHASE21_SP_MIN_IP_GAP:
+            move = float(clamp(gap * float(recent.get("authority") or 0.0), -ML_PHASE21_SP_MAX_IP_MOVE, ML_PHASE21_SP_MAX_IP_MOVE))
+            final_ip = float(clamp(base_ip + move, 1.0, 7.2))
+    out["ip_base_phase2"] = round(base_ip, 2)
+    out["ip_recent_phase21"] = recent.get("center")
+    out["ip_recent_sample_phase21"] = int(recent.get("sample") or 0)
+    out["ip_authority_phase21"] = round(float(recent.get("authority") or 0.0), 3)
+    out["ip_source_phase21"] = recent.get("source")
+    out["ip_adjustment_phase21"] = round(move, 3)
+    out["ip"] = round(final_ip, 2)
+    ra9 = float(_mlv3_num(out.get("ra9"), ML_CLEAN_LEAGUE_RA9) or ML_CLEAN_LEAGUE_RA9)
+    out["strength"] = round(float(clamp(50.0 + (ML_CLEAN_LEAGUE_RA9 - ra9) * 8.0 + (final_ip - 5.2) * 1.8, 25.0, 78.0)), 1)
+    return out
+
+
+def _ml_phase21_family_votes(row):
+    """Independent family directions from the already-deduped Phase 2 components."""
+    def n(key, default=0.0):
+        return float(_mlv3_num(row.get(key), default) or default)
+    votes = []
+    off_gap = n("Away Offense Center") - n("Home Offense Center")
+    sp_gap = n("Away SP Strength") - n("Home SP Strength")
+    bp_gap = n("Away Bullpen") - n("Home Bullpen")
+    if abs(off_gap) >= 0.20:
+        votes.append(("OFFENSE", "AWAY" if off_gap > 0 else "HOME", abs(off_gap)))
+    if abs(sp_gap) >= 3.0:
+        votes.append(("STARTER", "AWAY" if sp_gap > 0 else "HOME", abs(sp_gap)))
+    if abs(bp_gap) >= 3.0:
+        votes.append(("BULLPEN", "AWAY" if bp_gap > 0 else "HOME", abs(bp_gap)))
+    return votes
+
+
+def _ml_phase21_downgrade_tier(tier, steps=1):
+    order = ["OFFICIAL ML", "PLAYABLE ML", "LEAN / TRACK ML", "MODEL ONLY / TRACK", "PASS ML"]
+    try:
+        i = order.index(str(tier))
+    except ValueError:
+        return "PASS ML"
+    return order[min(len(order)-1, i + max(0, int(steps)))]
+
+
+def _impl_ml_build_board_20(board):
+    """Phase 2.1 post-decision guard around the proven Phase 2 clean canonical engine."""
+    df = _impl_ml_build_board_19(board)
+    if df is None or not isinstance(df, pd.DataFrame) or df.empty:
+        return df
+    out = df.copy()
+    for idx, rr in out.iterrows():
+        row = rr.to_dict()
+        matchup = str(row.get("Matchup") or "")
+        try:
+            away, home = [ml_canonical_abbr(x) for x in matchup.split(" @ ", 1)]
+        except Exception:
+            away = home = ""
+        raw_away = float(_mlv3_num(row.get("ML Raw Model Away %"), 50.0) or 50.0)
+        raw_home = float(_mlv3_num(row.get("ML Raw Model Home %"), 100.0 - raw_away) or (100.0 - raw_away))
+        cal_away = float(_mlv3_num(row.get("ML Card Away Win %"), raw_away) or raw_away)
+        cal_home = float(_mlv3_num(row.get("ML Card Home Win %"), raw_home) or raw_home)
+        model_pick = away if raw_away >= raw_home else home
+        model_code = "AWAY" if model_pick == away else "HOME"
+        market_cal_pick = away if cal_away >= cal_home else home
+        phase2_pre_guard_pick = str(row.get("Pick") or market_cal_pick)
+        phase2_pre_guard_prob = float(_mlv3_num(row.get("ML Card Best Play Prob %"), max(cal_away, cal_home)) or max(cal_away, cal_home))
+        market_available = bool(row.get("ML Market Available"))
+        votes = _ml_phase21_family_votes(row)
+        candidate_code = "AWAY" if market_cal_pick == away else "HOME"
+        candidate_support = [fam for fam, side, _ in votes if side == candidate_code]
+        model_support = [fam for fam, side, _ in votes if side == model_code]
+        away_market = _mlv3_num(row.get("Away Market %"), None)
+        home_market = _mlv3_num(row.get("Home Market %"), None)
+        cand_market = away_market if candidate_code == "AWAY" else home_market
+        model_market = away_market if model_code == "AWAY" else home_market
+        novig_gap = None if cand_market is None or model_market is None else float(cand_market - model_market)
+        raw_model_conf = max(raw_away, raw_home)
+        market_side_differs = bool(market_available and market_cal_pick and model_pick and market_cal_pick != model_pick)
+        allow_market_flip = bool(
+            market_side_differs
+            and raw_model_conf <= ML_PHASE21_MARKET_FLIP_MAX_RAW_MODEL
+            and novig_gap is not None and novig_gap >= ML_PHASE21_MARKET_FLIP_MIN_NOVIG_GAP
+            and len(candidate_support) >= ML_PHASE21_MARKET_FLIP_MIN_BASEBALL_FAMILIES
+        )
+        selected = market_cal_pick if allow_market_flip else model_pick
+        selected_code = "AWAY" if selected == away else "HOME"
+        quality = int(round(float(_mlv3_num(row.get("ML Quality Score"), 70.0) or 70.0)))
+        run_gap = abs(float(_mlv3_num(row.get("Score Edge"), 0.0) or 0.0))
+        missing = [x for x in str(row.get("ML Missing Data") or "").split("; ") if x]
+        risks = [x for x in str(row.get("ML Risk Reasons") or "").split("; ") if x and x != "signals aligned"]
+        market_obj = {
+            "available": market_available,
+            "away_prob": away_market,
+            "home_prob": home_market,
+            "away_price": _mlv3_num(row.get("Away Price"), None),
+            "home_price": _mlv3_num(row.get("Home Price"), None),
+        }
+
+        if selected == model_pick and market_side_differs and not allow_market_flip:
+            # Preserve baseball winner. Re-shrink the model probability without letting the market cross 50;
+            # the opposing market is handled as a confidence/tier risk below.
+            model_cal_away, model_cal_home, _, _ = _mlv3_calibrate_pair(raw_away, {"available": False}, quality)
+            decision_away, decision_home = model_cal_away, model_cal_home
+            selected_prob = decision_away if selected_code == "AWAY" else decision_home
+            risks.append("MARKET_OPPOSES_MODEL_SIDE_GUARD")
+        else:
+            decision_away, decision_home = cal_away, cal_home
+            selected_prob = decision_away if selected_code == "AWAY" else decision_home
+
+        raw_selected = raw_away if selected_code == "AWAY" else raw_home
+        tier, value_edge, market_agrees = _mlv3_clean_tier(selected_code, selected_prob, raw_selected, run_gap, market_obj, quality, missing, risks)
+        if market_side_differs and not allow_market_flip:
+            # Market opposition can downgrade but cannot by itself overwrite the baseball side.
+            severity = 2 if novig_gap is not None and novig_gap >= 7.0 else 1
+            tier = _ml_phase21_downgrade_tier(tier, severity)
+        final_status = "STRONG ML" if tier == "OFFICIAL ML" else "LEAN ML" if tier == "PLAYABLE ML" else "MODEL LEAN" if tier in {"LEAN / TRACK ML", "MODEL ONLY / TRACK"} else "PASS"
+        grade = f"🔥 ML EDGE — {selected}" if tier == "OFFICIAL ML" else f"✅ ML LEAN — {selected}" if tier in {"PLAYABLE ML", "LEAN / TRACK ML", "MODEL ONLY / TRACK"} else f"🚫 PASS ML — {selected}"
+        fair_odds = _ow_american_from_prob(selected_prob) if "_ow_american_from_prob" in globals() else ""
+        selected_price = row.get("Away Price") if selected_code == "AWAY" else row.get("Home Price")
+        cover_prob = row.get("ML Card Away +1.5 %") if selected_code == "AWAY" else row.get("ML Card Home +1.5 %")
+        try:
+            asp_diag = json.loads(row.get("ML Family Starter Away JSON") or "{}")
+        except Exception:
+            asp_diag = {}
+        try:
+            hsp_diag = json.loads(row.get("ML Family Starter Home JSON") or "{}")
+        except Exception:
+            hsp_diag = {}
+
+        updates = {
+            "Pick": selected, "ML Official Pick": selected, "ML Final Pick": selected,
+            "Status": final_status, "ML Final Status": final_status, "ML Grade": grade, "ML Official Tier": tier,
+            "ML Card Rating": f"{tier.replace(' ML','')} {selected_prob:.0f}%", "ML Card Rating Score": round(selected_prob, 1),
+            "ML Confidence %": round(selected_prob, 1), "ML True Win Confidence %": round(selected_prob, 1), "ML Final Confidence %": round(selected_prob, 1),
+            "ML Card Away Win %": round(float(decision_away), 1), "ML Card Home Win %": round(float(decision_home), 1),
+            "ML Decision Away %": round(float(decision_away), 1), "ML Decision Home %": round(float(decision_home), 1),
+            "ML Market-Calibrated Away %": round(float(cal_away), 1), "ML Market-Calibrated Home %": round(float(cal_home), 1),
+            "ML Card Best Play": f"{selected} ML", "ML Card Best Play Prob %": round(selected_prob, 1),
+            "ML Card Fair Odds": fair_odds, "ML Card Market Price": "" if selected_price is None else int(float(selected_price)),
+            "ML Market Agreement": bool(market_agrees), "ML Value Edge %": "" if value_edge is None else round(float(value_edge), 1),
+            "ML Card Value Edge %": "" if value_edge is None else round(float(value_edge), 1),
+            "ML Card Cover Lean": f"{selected} CVR +1.5", "ML Correct Cover Lean": f"{selected} CVR +1.5",
+            "ML Card Cover Prob %": cover_prob, "ML Correct Cover Prob %": cover_prob,
+            "ML Card Final Simulation Pick": selected,
+            "ML Card Pick Consistency": "PHASE21_MODEL_SIDE_GUARD" if market_side_differs and not allow_market_flip else "PHASE21_CONFIRMED_MARKET_FLIP" if allow_market_flip else "ALIGNED_CLEAN_ENGINE",
+            "ML Model Winner": model_pick, "ML Market-Calibrated Winner": market_cal_pick,
+            "ML Phase2.1 Pre-Guard Pick": phase2_pre_guard_pick, "ML Phase2.1 Pre-Guard Prob %": round(phase2_pre_guard_prob, 1),
+            "ML Phase2.1 Guard Changed Pick": bool(selected != phase2_pre_guard_pick),
+            "ML Market-Driven Flip Candidate": bool(market_side_differs), "ML Market Flip Allowed": bool(allow_market_flip),
+            "ML Market Flip No-Vig Gap %": None if novig_gap is None else round(novig_gap, 2),
+            "ML Model Raw Winner Confidence %": round(raw_model_conf, 1),
+            "ML Phase2.1 Candidate Baseball Support Count": len(candidate_support),
+            "ML Phase2.1 Candidate Baseball Support": "; ".join(candidate_support) or "NONE",
+            "ML Phase2.1 Model Baseball Support": "; ".join(model_support) or "NONE",
+            "ML Phase2.1 Family Votes": "; ".join(f"{fam}:{side}" for fam, side, _ in votes) or "NONE",
+            "Away SP Base IP Phase2": asp_diag.get("ip_base_phase2"), "Away SP Recent IP Phase2.1": asp_diag.get("ip_recent_phase21"),
+            "Away SP IP Adjustment Phase2.1": asp_diag.get("ip_adjustment_phase21"), "Away SP IP Source Phase2.1": asp_diag.get("ip_source_phase21"),
+            "Home SP Base IP Phase2": hsp_diag.get("ip_base_phase2"), "Home SP Recent IP Phase2.1": hsp_diag.get("ip_recent_phase21"),
+            "Home SP IP Adjustment Phase2.1": hsp_diag.get("ip_adjustment_phase21"), "Home SP IP Source Phase2.1": hsp_diag.get("ip_source_phase21"),
+            "ML Score Confidence Label": tier, "ML Score Confidence %": round(selected_prob, 1),
+            "ML Phase2.1 Version": ML_PHASE21_VERSION,
+            "ML Version": MONEYLINE_CLEAN_CANONICAL_VERSION, "Moneyline V2.5 Version": MONEYLINE_CLEAN_CANONICAL_VERSION,
+            "ML Card Version": MONEYLINE_CLEAN_CANONICAL_VERSION,
+            "Source": "CLEAN_CANONICAL_PHASE2_1 + ODDSAPI" if market_available else "CLEAN_CANONICAL_PHASE2_1 MODEL ONLY",
+        }
+        for key, value in updates.items():
+            out.at[idx, key] = value
+    if not out.empty:
+        order = {"OFFICIAL ML": 0, "PLAYABLE ML": 1, "LEAN / TRACK ML": 2, "MODEL ONLY / TRACK": 3, "PASS ML": 4}
+        out["_ml21_sort"] = out["ML Official Tier"].astype(str).map(lambda x: order.get(x, 9))
+        out["_ml21_prob"] = pd.to_numeric(out["ML Card Best Play Prob %"], errors="coerce").fillna(-999)
+        out = out.sort_values(["_ml21_sort", "_ml21_prob"], ascending=[True, False]).drop(columns=["_ml21_sort", "_ml21_prob"])
+    return out
+
 # ============================================================
 # SINGLE PUBLIC FUNCTION BINDINGS
 # Historical implementations have unique names. Each public API is bound once.
@@ -61914,7 +62167,7 @@ kproj_decision = globals().get('_impl_kproj_decision_05', globals().get('_impl_k
 if kproj_decision is None:
     raise RuntimeError("No implementation available for kproj_decision")
 # Moneyline V3 clean engine is the one active public path. Legacy 01..18 remain audit-only.
-ml_build_board = _impl_ml_build_board_19
+ml_build_board = _impl_ml_build_board_20
 if ml_build_board is None:
     raise RuntimeError("No implementation available for ml_build_board")
 ml_factor_summary = globals().get('_impl_ml_factor_summary_02', globals().get('_impl_ml_factor_summary_01', None))
@@ -61931,9 +62184,9 @@ if render_batter_fs_tab is None:
 # Shadow challenger layered on the protected Merge V2.6.10 canonical control.
 # This block never mutates the Merge control table/board in place.
 # =============================================================================
-UNDEFEATED_BETA_VERSION = "UNDEFEATED_BETA_V1_7_RUNTIME_DATA_AUTHORITY"
-SPORTS_ANALYSIS_BRAIN_VERSION = "SPORTS_ANALYSIS_BRAIN_V1_7_RUNTIME_DATA_AUTHORITY_2026_08_16"
-UNDEFEATED_BETA_MODE = "SHADOW_CHALLENGER_NO_MERGE_PROMOTION"
+UNDEFEATED_BETA_VERSION = "UNDEFEATED_BETA_V1_9_TARGETED_COMPONENTS_2026_08_16"
+SPORTS_ANALYSIS_BRAIN_VERSION = "SPORTS_ANALYSIS_BRAIN_V1_8_TARGETED_RESCUE_2026_08_16"
+UNDEFEATED_BETA_MODE = "ACTIVE_CHALLENGER_V1_8_PRESERVE_MERGE_CONTROL"
 UB_BASELINE_CONTROL_VERSION = "MERGE_V2_6_10_PROTECTED_CONTROL"
 UB_DATA_DIR = os.path.join(STORAGE_DIR, "learning_data")
 os.makedirs(UB_DATA_DIR, exist_ok=True)
@@ -62050,6 +62303,36 @@ UB_CONFIG = {
     "runtime_workload_material_gap_bf": 1.50,
     "runtime_workload_summary_l5_weight": 0.70,
     "runtime_workload_summary_l10_weight": 0.30,
+    # V1.8 targeted-rescue workload: verified normal starts are the independent workload center.
+    # Merge remains the control prior and is blended only once downstream.
+    "v18_full_starter_authority_event3": 0.92,
+    "v18_full_starter_authority_event2": 0.82,
+    "v18_full_starter_authority_event1": 0.62,
+    "v18_full_starter_min_gap_bf": 0.35,
+    "v18_full_starter_max_spread_bf": 4.4,
+    # Lineup shape is one opponent-K family, not an extra duplicate team-K bonus.
+    "v18_lineup_concentration_cap_k_rate": 0.008,
+    "v18_lineup_concentration_shape_weight": 0.30,
+    # Finishing interaction only fires when PutAway + swing miss + lineup pressure + workload agree.
+    "v18_conversion_interaction_strong_kbf": 0.0035,
+    "v18_conversion_interaction_elite_kbf": 0.0065,
+    "v18_conversion_interaction_max_kbf": 0.0070,
+    # Side changes remain allowed; thin one-family crossings are downgraded, not blocked biologically.
+    "v18_flip_confirm_edge_k": 0.35,
+    # V1.9 targeted add-ons from the component-engine audit. Keep these small:
+    # they are corroborating subcomponents, not new stacked full-strength families.
+    "v19_pitch_budget_min_gap_bf": 0.75,
+    "v19_pitch_budget_base_authority": 0.20,
+    "v19_pitch_budget_max_authority": 0.30,
+    "v19_pitch_budget_max_move_bf": 1.25,
+    "v19_pitch_budget_corroboration_gap_bf": 3.0,
+    "v19_contact_finish_max_kbf": 0.0045,
+    "v19_contact_finish_min_families": 2,
+    "v19_tto_min_starts": 5,
+    "v19_tto_base_authority": 0.25,
+    "v19_tto_strong_authority": 0.35,
+    "v19_tto_max_kbf": 0.0045,
+    "v19_flip_confirm_edge_k": 0.35,
     "recency_decay_half_life_starts": 3.0,
     "recency_decay_max_starts": 10,
     "persistent_direction_min_history": 4,
@@ -64323,6 +64606,7 @@ def _ub_build_row(row, p):
     ub_pitch_trend_delta = float(components.get("pitch_trend_delta") or 0.0)
     ub_workload_delta = float(components.get("workload_delta") or 0.0)
     ub_suppression_delta = float(components.get("suppression_delta") or 0.0)
+    ub_conversion_interaction_delta = float(components.get("conversion_interaction_delta") or 0.0)
     ub_cap_adjustment = float(components.get("guard_adjustment") or 0.0)
     ub_attribution_residual = float(components.get("attribution_residual") or 0.0)
 
@@ -64372,7 +64656,7 @@ def _ub_build_row(row, p):
         "UB Side Math Check": bool(line is None or decision["research_side"] == ("OVER" if projection > line else "UNDER" if projection < line else "PUSH")),
         "UB Edge Math Check": bool(line is None or abs((projection-line)-edge) <= 1e-9),
         "UB Side Flip vs Merge": bool(line is not None and merge_side in {"OVER","UNDER"} and decision["research_side"] in {"OVER","UNDER"} and merge_side != decision["research_side"]),
-        "UB Flip Driver": max([("KBF",abs(ub_skill_matchup_delta+ub_pitch_trend_delta+ub_suppression_delta)),("WORKLOAD",abs(ub_workload_delta)),("GUARD",abs(ub_cap_adjustment))], key=lambda x:x[1])[0] if line is not None else "NO_LINE",
+        "UB Flip Driver": max([("KBF",abs(ub_skill_matchup_delta+ub_pitch_trend_delta+ub_suppression_delta+ub_conversion_interaction_delta)),("WORKLOAD",abs(ub_workload_delta)),("GUARD",abs(ub_cap_adjustment))], key=lambda x:x[1])[0] if line is not None else "NO_LINE",
         "Undefeated Beta Playability": decision["playability"], "Undefeated Beta Decision State": decision["state"], "Undefeated Beta Decision Reason": decision["reason"],
         "UB Raw Clear Probability %": round(probability.get("raw", 0.5) * 100, 1), "UB Calibrated Clear Probability %": round(probability.get("calibrated", 0.5) * 100, 1),
         "UB Confidence Cap Reason": "; ".join(probability.get("cap_reasons") or []) or "NONE",
@@ -64439,6 +64723,7 @@ def _ub_build_row(row, p):
             "lineup_order": "BF exposure allocation",
             "workload": "centralized BF/IP distribution",
             "suppression_escape": "contact-suppression attenuation only",
+            "finishing_interaction": "V1.8 PutAway x swing-miss x lineup-pressure x workload; single capped interaction",
             "sportsbook_line": "decision/feasibility only",
         }),
         "UB Suppression Escape Score": fixed.get("escape", {}).get("score"), "UB Suppression Escape Signals": fixed.get("escape", {}).get("support_count"),
@@ -64509,6 +64794,10 @@ def _ub_build_row(row, p):
         "UB Pitch Trend Delta": round(ub_pitch_trend_delta, 3),
         "UB Workload Delta": round(ub_workload_delta, 3),
         "UB Suppression Escape Delta": round(ub_suppression_delta, 3),
+        "UB Conversion Interaction K/BF": round(float(components.get("conversion_interaction_kbf") or 0.0), 5),
+        "UB Conversion Interaction Delta": round(ub_conversion_interaction_delta, 3),
+        "UB Conversion Interaction Status": components.get("conversion_interaction_status") or "INACTIVE",
+        "UB Conversion Interaction Reasons": "; ".join(components.get("conversion_interaction_reasons") or []) or "NONE",
         "UB Cap Adjustment": round(ub_cap_adjustment, 3),
         "UB Attribution Residual": round(ub_attribution_residual, 6),
         "UB Attribution Reconciles": bool(abs(ub_attribution_residual) <= 1e-6),
@@ -64524,13 +64813,710 @@ def _ub_build_row(row, p):
     }
     output.update(_brain_profile(p, row, output))
     output["UB Official Tier"] = output.get("Best Play Tier")
-    output["UB Pregame Feature Persistence"] = "COMPLETE_V1_7_RUNTIME_DATA_AUTHORITY"
+    output["UB Pregame Feature Persistence"] = "COMPLETE_V1_8_TARGETED_RESCUE"
     output["UB Snapshot ID"] = _ub_hash_payload({
         "date": output.get("Slate Date"), "game": output.get("GamePk"), "pitcher": output.get("Pitcher ID") or output.get("Pitcher"),
         "line": line, "stage": output.get("UB Lineup Stage"), "version": UNDEFEATED_BETA_VERSION,
     })[:24]
     return output
 
+
+
+
+# =============================================================================
+# UNDEFEATED BETA V1.8 — TARGETED LOSS RESCUE
+# V1.7 is preserved as the benchmark file. V1.8 changes biological projections only
+# through current pregame baseball evidence: workload, confirmed-lineup shape, and a
+# small finishing-conversion interaction. No player/team/outcome hardcoding.
+# =============================================================================
+_ub_workload_distribution_v17_active = _ub_workload_distribution
+_ub_lineup_profile_v17_active = _ub_lineup_profile
+_ub_component_blend_profile_v17_active = _ub_component_blend_profile
+_ub_under_ceiling_risk_v17_active = _ub_under_ceiling_risk
+_ub_build_row_v17_active = _ub_build_row
+
+
+def _ub_workload_distribution(p, row=None):
+    """V1.8: verified normal full-start usage becomes the independent workload center.
+
+    The downstream component blend remains the ONLY regularization back toward Merge.
+    This avoids the old double-anchor problem while protecting short-role/openers.
+    """
+    p = p or {}; row = row or {}
+    base = dict(_ub_workload_distribution_v17_active(p, row) or {})
+    if not base:
+        return base
+    role = str(base.get("role") or "").upper()
+    role_authority = str(base.get("role_authority") or "")
+    confirmed_short = role in {"OPENER", "RELIEVER", "LIMITED_STARTER"} and role_authority == "CURRENT_CONFIRMED_ROLE"
+    games = _ub_history_games(p)
+    full = []
+    for g in games[:8]:
+        if not isinstance(g, dict):
+            continue
+        bf = _ub_num(g.get("BF"), None)
+        ip = _ub_num(g.get("IP_float"), None)
+        pc = _ub_num(g.get("Pitches") if g.get("Pitches") is not None else g.get("pitch_count"), None)
+        if bf is None or ip is None:
+            continue
+        if bf >= float(UB_CONFIG["recent_starter_min_bf"]) and ip >= float(UB_CONFIG["recent_starter_min_ip"]):
+            full.append({"bf": float(bf), "ip": float(ip), "pc": pc})
+
+    base["v18_full_starter_sample"] = len(full)
+    base["v18_full_starter_available"] = False
+    base["v18_full_starter_bf"] = None
+    base["v18_full_starter_ip"] = None
+    base["v18_full_starter_source"] = "NO_VERIFIED_FULL_STARTS"
+    if confirmed_short or not full:
+        return base
+
+    if len(full) >= 3:
+        recent3_bf = float(np.median([g["bf"] for g in full[:3]]))
+        recent5_bf = float(np.median([g["bf"] for g in full[:5]]))
+        center = 0.70 * recent3_bf + 0.30 * recent5_bf
+        authority = float(UB_CONFIG["v18_full_starter_authority_event3"])
+        source = "V18_VERIFIED_FULL_STARTS_3PLUS"
+    elif len(full) == 2:
+        center = float(np.mean([g["bf"] for g in full[:2]]))
+        authority = float(UB_CONFIG["v18_full_starter_authority_event2"])
+        source = "V18_VERIFIED_FULL_STARTS_2"
+    else:
+        center = float(full[0]["bf"])
+        authority = float(UB_CONFIG["v18_full_starter_authority_event1"])
+        source = "V18_VERIFIED_FULL_START_1"
+
+    # Pitch-count capacity is corroboration inside workload, never a second K family.
+    cap_bf = _ub_num(base.get("pitch_capacity_bf"), None)
+    if cap_bf is not None and cap_bf > 0 and abs(cap_bf - center) <= 4.5:
+        center = 0.85 * center + 0.15 * float(cap_bf)
+        source += "+PITCH_CAPACITY_CORROBORATION"
+
+    ratios = [g["ip"] / g["bf"] for g in full if g.get("bf") and g.get("ip")]
+    ip_per_bf = float(np.median(ratios)) if ratios else float(_ub_num(base.get("ip_per_bf"), 0.245) or 0.245)
+    ip_per_bf = float(clamp(ip_per_bf, 0.16, 0.33))
+    merge_bf = float(_ub_num(base.get("merge_bf"), DEFAULT_BF) or DEFAULT_BF)
+    gap = float(center - merge_bf)
+    min_gap = float(UB_CONFIG["v18_full_starter_min_gap_bf"])
+
+    if abs(gap) >= min_gap:
+        vals = [g["bf"] for g in full[:6]]
+        spread = float(np.std(vals, ddof=1)) if len(vals) >= 2 else 2.5
+        spread = float(clamp(spread, 1.6, float(UB_CONFIG["v18_full_starter_max_spread_bf"])))
+        p10 = center - max(3.0, 1.28 * spread)
+        p25 = center - max(1.5, 0.67 * spread)
+        p75 = center + max(1.5, 0.67 * spread)
+        p90 = center + max(3.0, 1.28 * spread)
+        base.update({
+            "bf_p10": round(float(clamp(p10, 4.0, 31.0)), 2),
+            "bf_p25": round(float(clamp(p25, 4.0, 31.0)), 2),
+            "bf_p50": round(float(clamp(center, 4.0, 31.0)), 2),
+            "bf_p75": round(float(clamp(max(center, p75), center, 32.0)), 2),
+            "bf_p90": round(float(clamp(max(p75, p90), p75, 33.0)), 2),
+        })
+        for bf_key, ip_key in (("bf_p10","ip_p10"),("bf_p25","ip_p25"),("bf_p50","ip_p50"),("bf_p75","ip_p75"),("bf_p90","ip_p90")):
+            base[ip_key] = round(float(base[bf_key]) * ip_per_bf, 2)
+        base["ip_per_bf"] = round(ip_per_bf, 4)
+        base["confidence"] = "HIGH" if len(full) >= 3 else "MEDIUM"
+        base["recent_starter_authority"] = True
+        mismatch = max(float(_ub_num(base.get("workload_mismatch_score"), 0.0) or 0.0), float(clamp(30.0 + abs(gap) * 15.0, 0.0, 100.0)))
+        escape = max(float(_ub_num(base.get("workload_escape_score"), 0.0) or 0.0), float(clamp(45.0 + abs(gap) * 11.0, 0.0, 100.0)))
+        base["workload_mismatch_score"] = round(mismatch, 1)
+        base["workload_escape_score"] = round(escape, 1)
+        reasons = list(base.get("workload_mismatch_reasons") or [])
+        reasons.append(f"V1.8 verified full-start BF {center:.1f} vs Merge {merge_bf:.1f}")
+        base["workload_mismatch_reasons"] = list(dict.fromkeys(reasons))
+
+        # Backward-compatible authority fields are intentionally updated because the existing
+        # coherent component blend reads them. This is not a second blend.
+        base["v17_independent_source"] = source
+        base["v17_authority_hint"] = authority
+        base["v17_independent_available"] = True
+        base["v17_gap_bf"] = round(gap, 2)
+
+    base["v18_full_starter_available"] = True
+    base["v18_full_starter_bf"] = round(center, 2)
+    base["v18_full_starter_ip"] = round(center * ip_per_bf, 2)
+    base["v18_full_starter_source"] = source
+    base["v18_full_starter_authority"] = round(authority, 3)
+    base["note"] = str(base.get("note") or "") + f"; V1.8 full-starter {center:.1f} BF/{center*ip_per_bf:.2f} IP ({source})"
+    return base
+
+
+def _ub_lineup_profile(p, row, expected_bf):
+    """V1.8 opponent-K shape: preserve V1.7 batter rates, add order concentration once."""
+    out = dict(_ub_lineup_profile_v17_active(p, row, expected_bf) or {})
+    rows = list(out.get("rows") or [])
+    if not rows:
+        out.update({"top3_rate": None, "top5_rate": None, "high_k_25": 0, "high_k_30": 0, "concentration_modifier": 0.0})
+        return out
+    rates = [float(_ub_num(r.get("rate"), LEAGUE_AVG_K) or LEAGUE_AVG_K) for r in rows[:9]]
+    simple = float(np.mean(rates)) if rates else LEAGUE_AVG_K
+    top3 = float(np.mean(rates[:3])) if rates[:3] else simple
+    top5 = float(np.mean(rates[:5])) if rates[:5] else simple
+    high25 = sum(1 for rate in rates if rate >= 0.25)
+    high30 = sum(1 for rate in rates if rate >= 0.30)
+    low17 = sum(1 for rate in rates if rate <= 0.17)
+    weighted_top = 0.60 * top3 + 0.40 * top5
+    modifier = (weighted_top - simple) * float(UB_CONFIG["v18_lineup_concentration_shape_weight"])
+    # Counts corroborate a real order-shape difference; they do not independently add team K twice.
+    if high30 >= 4 and weighted_top >= simple + 0.012:
+        modifier += 0.002
+    if low17 >= 4 and weighted_top <= simple - 0.012:
+        modifier -= 0.002
+    cap = float(UB_CONFIG["v18_lineup_concentration_cap_k_rate"])
+    modifier = float(clamp(modifier, -cap, cap))
+
+    seq = list(out.get("sequence") or [])
+    if seq and abs(modifier) > 1e-12:
+        seq = [float(clamp(float(rate) + modifier, 0.04, 0.55)) for rate in seq]
+        out["sequence"] = seq
+        out["exposure_rate"] = float(np.mean(seq))
+    out.update({
+        "top3_rate": top3, "top5_rate": top5, "high_k_25": high25, "high_k_30": high30, "low_k_17": low17,
+        "concentration_modifier": modifier, "concentration_weighted_top": weighted_top,
+    })
+    return out
+
+
+def _ub_v18_conversion_interaction(fixed, workload):
+    """Small matchup finishing interaction; all ingredients must agree before it can move K/BF."""
+    fixed = fixed or {}; workload = workload or {}
+    current = fixed.get("current_state") or {}
+    lineup = fixed.get("lineup") or {}
+    whiff = _ub_num(current.get("whiff"), None)
+    csw = _ub_num(current.get("csw"), None)
+    putaway = _ub_num(current.get("putaway"), None)
+    exposure = _ub_num(lineup.get("exposure_rate"), LEAGUE_AVG_K) or LEAGUE_AVG_K
+    high25 = int(lineup.get("high_k_25") or lineup.get("high_k") or 0)
+    bf50 = float(_ub_num(workload.get("bf_p50"), DEFAULT_BF) or DEFAULT_BF)
+    swing_strong = bool((whiff is not None and whiff >= 0.285) or (csw is not None and csw >= 0.290))
+    put_strong = bool(putaway is not None and putaway >= 0.235)
+    lineup_pressure = bool(exposure >= 0.235 and high25 >= 4)
+    workload_ok = bool(bf50 >= 19.0)
+    value = 0.0; status = "INACTIVE"; reasons = []
+    if swing_strong and put_strong and lineup_pressure and workload_ok:
+        value = float(UB_CONFIG["v18_conversion_interaction_strong_kbf"])
+        status = "STRONG"
+        reasons = ["SWING_MISS", "PUTAWAY", "LINEUP_K_PRESSURE", "WORKLOAD"]
+        elite = bool(putaway is not None and putaway >= 0.270 and whiff is not None and whiff >= 0.310 and exposure >= 0.245)
+        if elite:
+            value = float(UB_CONFIG["v18_conversion_interaction_elite_kbf"])
+            status = "ELITE"
+    value = float(clamp(value, 0.0, float(UB_CONFIG["v18_conversion_interaction_max_kbf"])))
+    return {"kbf": value, "status": status, "reasons": reasons}
+
+
+def _ub_component_blend_profile(merge_projection, fixed, workload, recent, regime, data_quality):
+    """V1.8 preserves V1.7 coherent BF/KBF blend and adds one separately-attributed conversion interaction."""
+    fixed = dict(fixed or {})
+    interaction = _ub_v18_conversion_interaction(fixed, workload)
+    bump = float(interaction.get("kbf") or 0.0)
+    fixed_for_blend = dict(fixed)
+    if bump:
+        base_matchup = float(fixed_for_blend.get("matchup_kbf") or fixed_for_blend.get("skill_kbf") or LEAGUE_AVG_K)
+        fixed_for_blend["matchup_kbf"] = float(clamp(base_matchup + bump, 0.08, 0.45))
+        fixed_for_blend["projection"] = float(fixed_for_blend["matchup_kbf"] * float(workload.get("bf_p50") or DEFAULT_BF))
+    comp = dict(_ub_component_blend_profile_v17_active(merge_projection, fixed_for_blend, workload, recent, regime, data_quality) or {})
+    kbf_auth = float(comp.get("kbf_authority") or 0.0)
+    merge_bf = float(comp.get("merge_bf") or workload.get("merge_bf") or DEFAULT_BF)
+    interaction_delta = merge_bf * kbf_auth * bump
+    # V1.7 called every post-trend matchup delta "suppression". Reclassify this known V1.8
+    # interaction so the attribution ledger still sums exactly.
+    if bump and "suppression_delta" in comp:
+        comp["suppression_delta"] = float(comp.get("suppression_delta") or 0.0) - interaction_delta
+    comp["conversion_interaction_kbf"] = bump
+    comp["conversion_interaction_delta"] = interaction_delta
+    comp["conversion_interaction_status"] = interaction.get("status")
+    comp["conversion_interaction_reasons"] = interaction.get("reasons") or []
+    total = sum(float(comp.get(k) or 0.0) for k in [
+        "skill_matchup_delta", "pitch_trend_delta", "suppression_delta", "conversion_interaction_delta", "workload_delta", "guard_adjustment"
+    ])
+    comp["attribution_residual"] = float(comp.get("projection") or merge_projection) - float(merge_projection) - total
+    comp["math_status"] = "PASS" if abs(float(comp["attribution_residual"])) <= 1e-6 else "FAIL"
+    return comp
+
+
+def _ub_under_ceiling_risk(line, side, fixed, recent, workload, regime):
+    """V1.8 adds a normal-full-starter escape path to the existing P75/P90 guard."""
+    out = dict(_ub_under_ceiling_risk_v17_active(line, side, fixed, recent, workload, regime) or {})
+    if line is None or str(side).upper() != "UNDER":
+        out["full_starter_k"] = None
+        return out
+    bf_full = _ub_num(workload.get("v18_full_starter_bf"), None)
+    if bf_full is None:
+        out["full_starter_k"] = None
+        return out
+    interaction = _ub_v18_conversion_interaction(fixed, workload)
+    kbf = float(fixed.get("matchup_kbf") or fixed.get("skill_kbf") or LEAGUE_AVG_K) + float(interaction.get("kbf") or 0.0)
+    full_k = float(bf_full) * kbf
+    needed = int(math.floor(float(line)) + 1)
+    score = float(out.get("score") or 0.0)
+    reasons = list(out.get("reasons") or [])
+    if full_k >= needed + 0.35:
+        score += 24.0; reasons.append(f"verified full-starter path {full_k:.1f} K vs {needed} needed")
+    elif full_k >= needed:
+        score += 16.0; reasons.append(f"verified full-starter path clears threshold ({full_k:.1f} K)")
+    elif full_k >= needed - 0.30:
+        score += 8.0; reasons.append(f"verified full-starter path near threshold ({full_k:.1f} K)")
+    score = float(clamp(score, 0.0, 100.0))
+    support = int(out.get("support_families") or 0)
+    status = "VETO" if score >= float(UB_CONFIG["under_ceiling_veto_score"]) and support >= 2 else "WATCH" if score >= float(UB_CONFIG["under_ceiling_watch_score"]) else "CLEAR"
+    out.update({"score": round(score,1), "status": status, "reasons": list(dict.fromkeys(reasons)), "full_starter_k": round(full_k,2), "full_starter_bf": round(float(bf_full),2)})
+    return out
+
+
+def _ub_v18_flip_evidence(out):
+    """Classify side changes. Never changes the biological projection or side."""
+    out = out or {}
+    merge_side = str(out.get("Merge Control Side") or "").upper()
+    side = str(out.get("Undefeated Beta Side") or "").upper()
+    if merge_side not in {"OVER","UNDER"} or side not in {"OVER","UNDER"} or merge_side == side:
+        return {"status":"NO_FLIP", "count":0, "reasons":[]}
+    direction = 1.0 if side == "OVER" else -1.0
+    reasons = []
+    merge_kbf = _ub_num(out.get("UB Merge Implied K/BF"), None)
+    indep_kbf = _ub_num(out.get("UB Independent Matchup K/BF"), None)
+    if merge_kbf is not None and indep_kbf is not None and direction * (indep_kbf - merge_kbf) >= 0.010:
+        reasons.append("KBF")
+    workload_delta = float(_ub_num(out.get("UB Workload Delta"), 0.0) or 0.0)
+    if direction * workload_delta >= 0.18:
+        reasons.append("WORKLOAD")
+    pitch_delta = float(_ub_num(out.get("UB Pitch Trend Delta"), 0.0) or 0.0)
+    if direction * pitch_delta >= 0.10:
+        reasons.append("PITCH_TREND")
+    line_mod = float(_ub_num(out.get("UB Lineup Concentration Modifier"), 0.0) or 0.0)
+    if direction * line_mod >= 0.0025:
+        reasons.append("LINEUP_SHAPE")
+    interaction = float(_ub_num(out.get("UB Conversion Interaction K/BF"), 0.0) or 0.0)
+    if side == "OVER" and interaction >= 0.003:
+        reasons.append("FINISHING_INTERACTION")
+    if side == "UNDER" and str(out.get("UB Current State") or "") == "DECLINING_CURRENT":
+        reasons.append("DECLINING_CURRENT")
+    reasons = list(dict.fromkeys(reasons))
+    status = "CONFIRMED_FLIP" if len(reasons) >= 3 else "SUPPORTED_FLIP" if len(reasons) >= 2 else "THIN_FLIP"
+    return {"status": status, "count": len(reasons), "reasons": reasons}
+
+
+def _ub_build_row(row, p):
+    """V1.8 row wrapper: diagnostics + thin-flip trust guard; raw projection remains formula-driven."""
+    out = _ub_build_row_v17_active(row, p)
+    if not out:
+        return out
+    # Recreate only lightweight diagnostics; all biological math was already computed by the wrapped functions.
+    workload = _ub_workload_distribution(p or {}, row or {})
+    lineup = _ub_lineup_profile(p or {}, row or {}, workload.get("bf_p50") or DEFAULT_BF)
+    current = {
+        "whiff": _ub_num(out.get("UB Whiff% Used"), None),
+        "csw": _ub_num(out.get("UB CSW% Used"), None),
+        "putaway": _ub_num(out.get("UB PutAway% Used"), None),
+    }
+    # Output percentages may be stored as percent values; normalize for interaction diagnostics.
+    for key in ("whiff","csw","putaway"):
+        if current[key] is not None and current[key] > 1.0:
+            current[key] /= 100.0
+    interaction = _ub_v18_conversion_interaction({"current_state": current, "lineup": lineup}, workload)
+    exact_interaction = _ub_num(out.get("UB Conversion Interaction K/BF"), None)
+    if exact_interaction is not None:
+        interaction["kbf"] = float(exact_interaction)
+        interaction["status"] = out.get("UB Conversion Interaction Status") or interaction.get("status")
+    out.update({
+        "UB V1.8 Full Starter BF": workload.get("v18_full_starter_bf"),
+        "UB V1.8 Full Starter IP": workload.get("v18_full_starter_ip"),
+        "UB V1.8 Full Starter Sample": workload.get("v18_full_starter_sample"),
+        "UB V1.8 Full Starter Source": workload.get("v18_full_starter_source"),
+        "UB V1.8 Full Starter Authority": workload.get("v18_full_starter_authority"),
+        "UB Lineup Top3 K%": None if lineup.get("top3_rate") is None else round(float(lineup.get("top3_rate"))*100.0,2),
+        "UB Lineup Top5 K%": None if lineup.get("top5_rate") is None else round(float(lineup.get("top5_rate"))*100.0,2),
+        "UB Lineup High-K 25% Count": int(lineup.get("high_k_25") or 0),
+        "UB Lineup High-K 30% Count": int(lineup.get("high_k_30") or 0),
+        "UB Lineup Concentration Modifier": round(float(lineup.get("concentration_modifier") or 0.0),5),
+        "UB Conversion Interaction K/BF": round(float(interaction.get("kbf") or 0.0),5),
+        "UB Conversion Interaction Status": out.get("UB Conversion Interaction Status") or interaction.get("status"),
+        "UB Conversion Interaction Reasons": out.get("UB Conversion Interaction Reasons") or ("; ".join(interaction.get("reasons") or []) or "NONE"),
+        "UB Confidence Sync Check": True,
+    })
+    flip = _ub_v18_flip_evidence(out)
+    out["UB Flip Evidence Status"] = flip["status"]
+    out["UB Flip Evidence Count"] = flip["count"]
+    out["UB Flip Evidence Reasons"] = "; ".join(flip["reasons"]) or "NONE"
+    edge = abs(float(_ub_num(out.get("Undefeated Beta Edge"), 0.0) or 0.0))
+    if flip["status"] == "THIN_FLIP" and edge < float(UB_CONFIG["v18_flip_confirm_edge_k"]):
+        old_play = str(out.get("Undefeated Beta Playability") or "TRACK")
+        downgrade = {"OFFICIAL_PLAY":"LEAN", "LEAN":"TRACK", "TRACK":"PASS", "PASS":"PASS"}
+        new_play = downgrade.get(old_play, "PASS")
+        out["Undefeated Beta Playability"] = new_play
+        out["Undefeated Beta Decision State"] = f"{new_play}_{out.get('Undefeated Beta Side')}"
+        reason = str(out.get("Undefeated Beta Decision Reason") or "")
+        out["Undefeated Beta Decision Reason"] = (reason + "; V1.8_THIN_FLIP_CONFIRMATION_GUARD").strip("; ")
+        if out.get("Best Play Score") is not None:
+            out["Best Play Score"] = max(0.0, float(_ub_num(out.get("Best Play Score"), 0.0) or 0.0) - 8.0)
+        if new_play == "PASS":
+            out["Best Play Tier"] = "PASS"
+    return out
+
+
+
+# =============================================================================
+# UNDEFEATED BETA V1.9 — TARGETED COMPONENT ADD-ONS
+# Adds only the strongest still-missing ideas from the component-engine audit:
+#   1) explicit projected-pitch-count / pitches-per-BF workload cross-check,
+#   2) contact / two-strike finishability resistance (small, multi-signal only),
+#   3) actual TTO-rate weighting by expected BF exposure,
+#   4) separate positive leash support vs negative early-hook risk used ONLY to
+#      modulate workload authority, never as another free-standing K bonus.
+# Umpire projection remains OFF. Moneyline Phase 2.1 is intentionally unchanged.
+# =============================================================================
+_ub_workload_distribution_v18_active = _ub_workload_distribution
+_ub_fixed_core_v18_active = _ub_fixed_core
+_ub_component_blend_profile_v18_active = _ub_component_blend_profile
+_ub_build_row_v18_active = _ub_build_row
+_ub_v18_flip_evidence_active = _ub_v18_flip_evidence
+
+
+def _ub_v19_script_authority_profile(p, row, workload):
+    """Separate helpful leash context from early-hook risk without double-counting BF.
+
+    This profile never adds BF directly. It only changes how much authority an explicit
+    pitch-budget BF estimate is allowed to receive.
+    """
+    p = p or {}; row = row or {}; workload = workload or {}
+    bullpen = str(_ub_first([p, row], ["bullpen_status", "Bullpen Status", "PO Bullpen Leash Signal"], "") or "").upper()
+    damage = str(_ub_first([p, row], ["run_damage_risk_level", "K Damage Risk Label", "Damage Risk Label"], "") or "").upper()
+    hook = str(_ub_first([p, row], ["manager_hook_status", "early_pull_label", "leash_risk", "Manager Hook"], "") or "").upper()
+    manager = str(workload.get("manager_leash_state") or "NEUTRAL").upper()
+
+    positive = []
+    negative = []
+    if any(token in bullpen for token in ("TIRED", "TAXED", "HEAVY", "EXTEND")):
+        positive.append("TIRED_BULLPEN")
+    if manager == "DEEP" or any(token in hook for token in ("LOW_HOOK", "LOW HOOK", "LONG LEASH", "DEEP")):
+        positive.append("DEEP_LEASH")
+    if manager == "SHORT" or any(token in hook for token in ("QUICK_HOOK", "QUICK HOOK", "EARLY_PULL", "EARLY PULL", "PITCH_LIMIT", "PITCH LIMIT", "LIMITED")):
+        negative.append("SHORT_LEASH")
+    if any(token in damage for token in ("HIGH", "EXTREME", "RED", "SEVERE")):
+        negative.append("EARLY_DAMAGE_RISK")
+
+    return {
+        "positive": bool(positive), "negative": bool(negative),
+        "positive_reasons": positive, "negative_reasons": negative,
+        "label": "NEGATIVE_HOOK_RISK" if negative else "POSITIVE_LEASH_SUPPORT" if positive else "NEUTRAL",
+    }
+
+
+def _ub_v19_pitch_budget_profile(p, row, workload):
+    """Independent BF cross-check: projected pitch budget / expected pitches per BF.
+
+    Only an explicit/current projected pitch count is allowed to move BF here. Recent
+    pitch counts already participate elsewhere and are not counted again as a second
+    independent source.
+    """
+    p = p or {}; row = row or {}; workload = workload or {}
+    pitches = _ub_num(_ub_first([p, row], [
+        "projected_pitches", "Projected Pitches", "Projected Pitch Count", "Expected Pitch Count",
+        "APP97 Projected Pitches", "Pitch Count Projection",
+    ], workload.get("projected_pitches_input")), None)
+    ppb3 = _ub_num(workload.get("recent_ppb_l3"), None)
+    ppb5 = _ub_num(workload.get("recent_ppb_l5"), None)
+    raw_ppb = _ub_num(_ub_first([p, row], ["pitches_per_bf", "Pitches Per BF", "PPB", "pitches_per_batter"], None), None)
+    ppb_parts = []
+    if ppb3 is not None and 2.8 <= ppb3 <= 5.2: ppb_parts.append((ppb3, 0.60))
+    if ppb5 is not None and 2.8 <= ppb5 <= 5.2: ppb_parts.append((ppb5, 0.30))
+    if raw_ppb is not None and 2.8 <= raw_ppb <= 5.2: ppb_parts.append((raw_ppb, 0.10))
+    if pitches is None or not (45.0 <= float(pitches) <= 125.0) or not ppb_parts:
+        return {"available": False, "bf": None, "expected_ppb": None, "pitches": pitches, "reason": "NO_EXPLICIT_PITCH_BUDGET_OR_PPB"}
+    denom = sum(w for _, w in ppb_parts) or 1.0
+    expected_ppb = sum(v*w for v,w in ppb_parts) / denom
+    expected_ppb = float(clamp(expected_ppb, 3.05, 4.65))
+    bf = float(clamp(float(pitches) / expected_ppb, 8.0, 31.5))
+    return {
+        "available": True, "bf": bf, "expected_ppb": expected_ppb, "pitches": float(pitches),
+        "reason": f"{float(pitches):.0f} projected pitches / {expected_ppb:.2f} pitches per BF",
+    }
+
+
+def _ub_workload_distribution(p, row=None):
+    """V1.9 workload: V1.8 full-starter center + one explicit pitch-budget cross-check."""
+    p = p or {}; row = row or {}
+    base = dict(_ub_workload_distribution_v18_active(p, row) or {})
+    if not base:
+        return base
+    pitch_budget = _ub_v19_pitch_budget_profile(p, row, base)
+    script = _ub_v19_script_authority_profile(p, row, base)
+    base.update({
+        "v19_pitch_budget_available": bool(pitch_budget.get("available")),
+        "v19_pitch_budget_bf": None if pitch_budget.get("bf") is None else round(float(pitch_budget["bf"]), 2),
+        "v19_pitch_budget_pitches": None if pitch_budget.get("pitches") is None else round(float(pitch_budget["pitches"]), 1),
+        "v19_pitch_budget_expected_ppb": None if pitch_budget.get("expected_ppb") is None else round(float(pitch_budget["expected_ppb"]), 3),
+        "v19_pitch_budget_reason": pitch_budget.get("reason"),
+        "v19_positive_leash_support": bool(script.get("positive")),
+        "v19_negative_hook_risk": bool(script.get("negative")),
+        "v19_script_label": script.get("label"),
+        "v19_positive_leash_reasons": script.get("positive_reasons") or [],
+        "v19_negative_hook_reasons": script.get("negative_reasons") or [],
+        "v19_pitch_budget_move_bf": 0.0,
+        "v19_pitch_budget_authority": 0.0,
+    })
+    if not pitch_budget.get("available"):
+        return base
+    if str(base.get("role") or "").upper() in {"OPENER", "RELIEVER", "LIMITED_STARTER"} and str(base.get("role_authority") or "") == "CURRENT_CONFIRMED_ROLE":
+        base["v19_pitch_budget_reason"] = str(base.get("v19_pitch_budget_reason") or "") + "; confirmed short role blocks pitch-budget promotion"
+        return base
+
+    center = float(_ub_num(base.get("bf_p50"), DEFAULT_BF) or DEFAULT_BF)
+    budget_bf = float(pitch_budget["bf"])
+    gap = budget_bf - center
+    if abs(gap) < float(UB_CONFIG["v19_pitch_budget_min_gap_bf"]):
+        return base
+
+    # Require pitch budget to agree reasonably with an independent recent/full-start workload source.
+    corroborators = []
+    for value in (base.get("v18_full_starter_bf"), base.get("recent_bf_median"), base.get("live_workload_center")):
+        value = _ub_num(value, None)
+        if value is not None:
+            corroborators.append(float(value))
+    corroborated = any(abs(budget_bf - x) <= float(UB_CONFIG["v19_pitch_budget_corroboration_gap_bf"]) for x in corroborators)
+    if not corroborated and int(base.get("sample") or 0) < 3:
+        base["v19_pitch_budget_reason"] = str(base.get("v19_pitch_budget_reason") or "") + "; insufficient workload corroboration"
+        return base
+
+    authority = float(UB_CONFIG["v19_pitch_budget_base_authority"])
+    if script.get("positive") and gap > 0:
+        authority += 0.07
+    if script.get("negative") and gap > 0:
+        authority -= 0.10
+    if script.get("negative") and gap < 0:
+        authority += 0.05
+    authority = float(clamp(authority, 0.08, float(UB_CONFIG["v19_pitch_budget_max_authority"])))
+    move = float(clamp(gap * authority, -float(UB_CONFIG["v19_pitch_budget_max_move_bf"]), float(UB_CONFIG["v19_pitch_budget_max_move_bf"])))
+    if abs(move) < 0.05:
+        return base
+
+    # Add the same BF shift to every percentile so distribution width is preserved.
+    previous = {}
+    for key in ("bf_p10", "bf_p25", "bf_p50", "bf_p75", "bf_p90"):
+        val = _ub_num(base.get(key), None)
+        if val is not None:
+            previous[key] = float(val)
+            base[key] = round(float(clamp(float(val) + move, 4.0, 33.0)), 2)
+    # Reassert monotonic distribution after clipping.
+    ordered = ["bf_p10", "bf_p25", "bf_p50", "bf_p75", "bf_p90"]
+    last = 4.0
+    for key in ordered:
+        if base.get(key) is not None:
+            base[key] = round(max(last, float(base[key])), 2)
+            last = float(base[key])
+    ip_per_bf = float(_ub_num(base.get("ip_per_bf"), 0.245) or 0.245)
+    for bf_key, ip_key in (("bf_p10","ip_p10"),("bf_p25","ip_p25"),("bf_p50","ip_p50"),("bf_p75","ip_p75"),("bf_p90","ip_p90")):
+        if base.get(bf_key) is not None:
+            base[ip_key] = round(float(base[bf_key]) * ip_per_bf, 2)
+    base["v19_pitch_budget_move_bf"] = round(move, 3)
+    base["v19_pitch_budget_authority"] = round(authority, 3)
+    if abs(move) >= 0.35:
+        base["workload_mismatch_score"] = round(max(float(_ub_num(base.get("workload_mismatch_score"), 0.0) or 0.0), min(100.0, 35.0 + abs(move)*25.0)), 1)
+        reasons = list(base.get("workload_mismatch_reasons") or [])
+        reasons.append(f"V1.9 pitch-budget cross-check moved BF {move:+.2f} ({budget_bf:.1f} budget BF vs {center:.1f} prior center)")
+        base["workload_mismatch_reasons"] = list(dict.fromkeys(reasons))
+    base["note"] = str(base.get("note") or "") + f"; V1.9 pitch-budget {budget_bf:.1f} BF, authority {authority:.2f}, move {move:+.2f}"
+    return base
+
+
+def _ub_v19_contact_finishability_profile(p, row):
+    """Small multi-signal K/BF modifier for hitters extending/fouling off two-strike PAs.
+
+    This intentionally excludes lineup K% so opponent strikeout tendency is not counted twice.
+    """
+    p = p or {}; row = row or {}
+    zone_contact = _ub_rate(_ub_first([p, row], ["statcast_zone_contact", "Zone Contact%", "Statcast Zone Contact%"], None), None)
+    foul = _ub_rate(_ub_first([p, row], ["foul_extension_rate", "Foul Extension Rate", "Foul%", "PO Foul Workload %"], None), None)
+    two_reach = _ub_rate(_ub_first([p, row], ["two_strike_reach_rate", "Two Strike Reach Rate"], None), None)
+    two_put = _ub_rate(_ub_first([p, row], ["two_strike_putaway_rate", "Two Strike PutAway Rate"], None), None)
+
+    support, resist = [], []
+    if zone_contact is not None:
+        if zone_contact <= 0.79: support.append("LOW_ZONE_CONTACT")
+        elif zone_contact >= 0.88: resist.append("HIGH_ZONE_CONTACT")
+    if foul is not None:
+        if foul <= 0.14: support.append("LOW_FOUL_EXTENSION")
+        elif foul >= 0.23: resist.append("HIGH_FOUL_EXTENSION")
+    if two_reach is not None:
+        if two_reach <= 0.18: support.append("LOW_TWO_STRIKE_SURVIVAL")
+        elif two_reach >= 0.30: resist.append("HIGH_TWO_STRIKE_SURVIVAL")
+    if two_put is not None:
+        if two_put >= 0.27: support.append("STRONG_TWO_STRIKE_FINISH")
+        elif two_put <= 0.15: resist.append("WEAK_TWO_STRIKE_FINISH")
+
+    min_fams = int(UB_CONFIG["v19_contact_finish_min_families"])
+    raw = 0.0
+    status = "NEUTRAL"
+    if len(support) >= min_fams and len(support) > len(resist):
+        raw = min(float(UB_CONFIG["v19_contact_finish_max_kbf"]), 0.0015 * len(support))
+        status = "EASIER_TO_FINISH"
+    elif len(resist) >= min_fams and len(resist) > len(support):
+        raw = -min(float(UB_CONFIG["v19_contact_finish_max_kbf"]), 0.0015 * len(resist))
+        status = "CONTACT_RESISTANT"
+    return {
+        "kbf_modifier": float(raw), "status": status, "support": support, "resistance": resist,
+        "zone_contact": zone_contact, "foul_extension": foul, "two_strike_reach": two_reach, "two_strike_putaway": two_put,
+        "evidence_families": len(support) + len(resist),
+    }
+
+
+def _ub_v19_tto_rate_profile(p, row, workload, skill_kbf):
+    """Weight actual TTO K rates by the BF the pitcher is expected to reach.
+
+    The resulting adjustment is deliberately only 25-35% of the gap to true-talent K/BF
+    and capped to +/-0.45 percentage points so TTO cannot overpower core skill/matchup.
+    """
+    p = p or {}; row = row or {}; workload = workload or {}
+    t1 = _ub_rate(_ub_first([p, row], ["TTO1_K_pct", "tto1_k_pct"], None), None)
+    t2 = _ub_rate(_ub_first([p, row], ["TTO2_K_pct", "tto2_k_pct"], None), None)
+    t3 = _ub_rate(_ub_first([p, row], ["TTO3_K_pct", "tto3_k_pct"], None), None)
+    starts = len(_ub_history_games(p))
+    if starts < int(UB_CONFIG["v19_tto_min_starts"]) or t1 is None or t2 is None:
+        return {"available": False, "kbf_modifier": 0.0, "weighted_kbf": None, "starts": starts, "reason": "INSUFFICIENT_TTO_SAMPLE"}
+    bf = float(_ub_num(workload.get("bf_p50"), DEFAULT_BF) or DEFAULT_BF)
+    if bf < 12.0:
+        return {"available": False, "kbf_modifier": 0.0, "weighted_kbf": None, "starts": starts, "reason": "LOW_TTO_ACCESS"}
+    n1 = min(bf, 9.0)
+    n2 = min(max(bf - 9.0, 0.0), 9.0)
+    n3 = max(bf - 18.0, 0.0)
+    if t3 is None:
+        t3 = t2
+    denom = max(1e-9, n1+n2+n3)
+    weighted = (n1*t1 + n2*t2 + n3*t3) / denom
+    authority = float(UB_CONFIG["v19_tto_strong_authority"] if starts >= 8 else UB_CONFIG["v19_tto_base_authority"])
+    modifier = float(clamp((weighted - float(skill_kbf)) * authority, -float(UB_CONFIG["v19_tto_max_kbf"]), float(UB_CONFIG["v19_tto_max_kbf"])))
+    return {
+        "available": True, "kbf_modifier": modifier, "weighted_kbf": weighted, "starts": starts,
+        "authority": authority, "bf1": n1, "bf2": n2, "bf3": n3,
+        "tto1": t1, "tto2": t2, "tto3": t3,
+        "reason": f"TTO-weighted {weighted*100:.1f}% across {bf:.1f} BF vs skill {float(skill_kbf)*100:.1f}%",
+    }
+
+
+def _ub_fixed_core(p, row, workload, recent, regime):
+    """V1.9 keeps V1.8 core and applies only capped contact/TTO K/BF modifiers."""
+    base = dict(_ub_fixed_core_v18_active(p, row, workload, recent, regime) or {})
+    if not base:
+        return base
+    pre = float(base.get("matchup_kbf") or base.get("skill_kbf") or LEAGUE_AVG_K)
+    contact = _ub_v19_contact_finishability_profile(p, row)
+    tto = _ub_v19_tto_rate_profile(p, row, workload, float(base.get("skill_kbf") or LEAGUE_AVG_K))
+    contact_mod = float(contact.get("kbf_modifier") or 0.0)
+    tto_mod = float(tto.get("kbf_modifier") or 0.0)
+    net = float(clamp(contact_mod + tto_mod, -0.0070, 0.0070))
+    post = float(clamp(pre + net, 0.08, 0.45))
+    base["v19_pre_modifier_matchup_kbf"] = pre
+    base["v19_contact_finishability"] = contact
+    base["v19_tto_rate"] = tto
+    base["v19_contact_kbf_modifier"] = contact_mod
+    base["v19_tto_kbf_modifier"] = tto_mod
+    base["v19_net_kbf_modifier"] = post - pre
+    base["matchup_kbf"] = post
+    base["projection"] = post * float(_ub_num(workload.get("bf_p50"), DEFAULT_BF) or DEFAULT_BF)
+    return base
+
+
+def _ub_component_blend_profile(merge_projection, fixed, workload, recent, regime, data_quality):
+    """V1.9 reclassifies contact/TTO effects in the additive attribution ledger."""
+    comp = dict(_ub_component_blend_profile_v18_active(merge_projection, fixed, workload, recent, regime, data_quality) or {})
+    if not comp:
+        return comp
+    merge_bf = float(comp.get("merge_bf") or workload.get("merge_bf") or DEFAULT_BF)
+    auth = float(comp.get("kbf_authority") or UB_CONFIG["component_kbf_authority_normal"])
+    contact_kbf = float((fixed or {}).get("v19_contact_kbf_modifier") or 0.0)
+    tto_kbf = float((fixed or {}).get("v19_tto_kbf_modifier") or 0.0)
+    contact_delta = merge_bf * auth * contact_kbf
+    tto_delta = merge_bf * auth * tto_kbf
+    # V1.8 sees these as part of post-trend/suppression because they are injected after
+    # the base core is built. Reclassify, do not add them twice.
+    if "suppression_delta" in comp:
+        comp["suppression_delta"] = float(comp.get("suppression_delta") or 0.0) - contact_delta - tto_delta
+    comp["contact_finishability_kbf"] = contact_kbf
+    comp["contact_finishability_delta"] = contact_delta
+    comp["tto_rate_kbf"] = tto_kbf
+    comp["tto_rate_delta"] = tto_delta
+    total = sum(float(comp.get(k) or 0.0) for k in [
+        "skill_matchup_delta", "pitch_trend_delta", "suppression_delta", "conversion_interaction_delta",
+        "contact_finishability_delta", "tto_rate_delta", "workload_delta", "guard_adjustment"
+    ])
+    comp["attribution_residual"] = float(comp.get("projection") or merge_projection) - float(merge_projection) - total
+    comp["math_status"] = "PASS" if abs(float(comp["attribution_residual"])) <= 1e-6 else "FAIL"
+    fams = list(comp.get("signal_families") or [])
+    if abs(contact_kbf) >= 0.0015: fams.append("CONTACT_FINISHABILITY")
+    if abs(tto_kbf) >= 0.0015: fams.append("TTO_RATE")
+    comp["signal_families"] = sorted(set(fams))
+    return comp
+
+
+def _ub_v19_flip_evidence(out):
+    base = dict(_ub_v18_flip_evidence_active(out) or {})
+    if base.get("status") == "NO_FLIP":
+        return base
+    side = str((out or {}).get("Undefeated Beta Side") or "").upper()
+    direction = 1.0 if side == "OVER" else -1.0
+    reasons = list(base.get("reasons") or [])
+    contact = float(_ub_num((out or {}).get("UB Contact Finishability K/BF"), 0.0) or 0.0)
+    tto = float(_ub_num((out or {}).get("UB TTO Rate K/BF Modifier"), 0.0) or 0.0)
+    pitch_move = float(_ub_num((out or {}).get("UB Pitch Budget Move BF"), 0.0) or 0.0)
+    if direction * contact >= 0.0015: reasons.append("CONTACT_FINISHABILITY")
+    if direction * tto >= 0.0015: reasons.append("TTO_RATE")
+    if direction * pitch_move >= 0.35: reasons.append("PITCH_BUDGET")
+    reasons = list(dict.fromkeys(reasons))
+    status = "CONFIRMED_FLIP" if len(reasons) >= 3 else "SUPPORTED_FLIP" if len(reasons) >= 2 else "THIN_FLIP"
+    return {"status": status, "count": len(reasons), "reasons": reasons}
+
+
+def _ub_build_row(row, p):
+    """V1.9 diagnostics wrapper; biological math is already handled by global overrides."""
+    out = _ub_build_row_v18_active(row, p)
+    if not out:
+        return out
+    workload = _ub_workload_distribution(p or {}, row or {})
+    # Rebuild only the small V1.9 profiles for transparent output.
+    contact = _ub_v19_contact_finishability_profile(p or {}, row or {})
+    skill = float(_ub_num(out.get("UB Skill K/BF"), LEAGUE_AVG_K) or LEAGUE_AVG_K)
+    tto = _ub_v19_tto_rate_profile(p or {}, row or {}, workload, skill)
+    out.update({
+        "UB V1.9 Pitch Budget BF": workload.get("v19_pitch_budget_bf"),
+        "UB V1.9 Pitch Budget Pitches": workload.get("v19_pitch_budget_pitches"),
+        "UB V1.9 Pitch Budget Expected PPB": workload.get("v19_pitch_budget_expected_ppb"),
+        "UB Pitch Budget Move BF": workload.get("v19_pitch_budget_move_bf"),
+        "UB Pitch Budget Authority": workload.get("v19_pitch_budget_authority"),
+        "UB Pitch Budget Reason": workload.get("v19_pitch_budget_reason"),
+        "UB Positive Leash Support": bool(workload.get("v19_positive_leash_support")),
+        "UB Negative Hook Risk": bool(workload.get("v19_negative_hook_risk")),
+        "UB Script Authority Label": workload.get("v19_script_label"),
+        "UB Script Positive Reasons": "; ".join(workload.get("v19_positive_leash_reasons") or []) or "NONE",
+        "UB Script Negative Reasons": "; ".join(workload.get("v19_negative_hook_reasons") or []) or "NONE",
+        "UB Contact Finishability Status": contact.get("status"),
+        "UB Contact Finishability K/BF": round(float(contact.get("kbf_modifier") or 0.0), 5),
+        "UB Contact Finishability Support": "; ".join(contact.get("support") or []) or "NONE",
+        "UB Contact Finishability Resistance": "; ".join(contact.get("resistance") or []) or "NONE",
+        "UB Contact Zone Contact%": None if contact.get("zone_contact") is None else round(float(contact.get("zone_contact"))*100.0, 2),
+        "UB Contact Foul Extension%": None if contact.get("foul_extension") is None else round(float(contact.get("foul_extension"))*100.0, 2),
+        "UB Contact Two-Strike Reach%": None if contact.get("two_strike_reach") is None else round(float(contact.get("two_strike_reach"))*100.0, 2),
+        "UB TTO Rate Available": bool(tto.get("available")),
+        "UB TTO Weighted K%": None if tto.get("weighted_kbf") is None else round(float(tto.get("weighted_kbf"))*100.0, 2),
+        "UB TTO Rate K/BF Modifier": round(float(tto.get("kbf_modifier") or 0.0), 5),
+        "UB TTO Rate Starts": int(tto.get("starts") or 0),
+        "UB TTO Rate Reason": tto.get("reason"),
+    })
+    # The exact component math values were produced during the wrapped build.
+    # Preserve existing reconciliation flag and expose new attribution components when available.
+    merge_bf = float(_ub_num(out.get("UB Merge BF Component"), DEFAULT_BF) or DEFAULT_BF)
+    kbf_auth = float(_ub_num(out.get("UB KBF Authority"), UB_CONFIG["component_kbf_authority_normal"]) or UB_CONFIG["component_kbf_authority_normal"])
+    out["UB Contact Finishability Delta"] = round(merge_bf * kbf_auth * float(contact.get("kbf_modifier") or 0.0), 3)
+    out["UB TTO Rate Delta"] = round(merge_bf * kbf_auth * float(tto.get("kbf_modifier") or 0.0), 3)
+    flip = _ub_v19_flip_evidence(out)
+    out["UB Flip Evidence Status"] = flip["status"]
+    out["UB Flip Evidence Count"] = flip["count"]
+    out["UB Flip Evidence Reasons"] = "; ".join(flip["reasons"]) or "NONE"
+    edge = abs(float(_ub_num(out.get("Undefeated Beta Edge"), 0.0) or 0.0))
+    # V1.8 already applies the thin-flip trust downgrade once inside the wrapped row builder.
+    # V1.9 enriches the evidence classification only; it never double-penalizes the same flip.
+    out["UB Pregame Feature Persistence"] = "COMPLETE_V1_9_TARGETED_COMPONENTS"
+    return out
 
 
 def _ub_apply_slate_imbalance_guard(frame):
@@ -64620,6 +65606,16 @@ def _ub_beta_signal_signature(board):
             _ub_num(_ub_first([p], ["statcast_whiff", "Savant Custom Whiff%", "Whiff%"], None), None),
             _ub_num(_ub_first([p], ["statcast_csw", "Savant Custom CSW%", "CSW%"], None), None),
             _ub_num(_ub_first([p], ["putaway_pct", "PutAway%"], None), None),
+            _ub_num(_ub_first([p], ["projected_pitches", "Projected Pitch Count", "Expected Pitch Count", "Pitch Count Projection"], None), None),
+            _ub_num(_ub_first([p], ["pitches_per_bf", "Pitches Per BF", "PPB", "pitches_per_batter"], None), None),
+            _ub_num(_ub_first([p], ["statcast_zone_contact", "Zone Contact%", "Statcast Zone Contact%"], None), None),
+            _ub_num(_ub_first([p], ["foul_extension_rate", "Foul Extension Rate", "Foul%", "PO Foul Workload %"], None), None),
+            _ub_num(_ub_first([p], ["two_strike_reach_rate", "Two Strike Reach Rate"], None), None),
+            _ub_num(_ub_first([p], ["two_strike_putaway_rate", "Two Strike PutAway Rate"], None), None),
+            _ub_num(_ub_first([p], ["TTO1_K_pct", "tto1_k_pct"], None), None),
+            _ub_num(_ub_first([p], ["TTO2_K_pct", "tto2_k_pct"], None), None),
+            _ub_num(_ub_first([p], ["TTO3_K_pct", "tto3_k_pct"], None), None),
+            str(p.get("bullpen_status") or ""), str(p.get("run_damage_risk_level") or ""), str(p.get("manager_hook_status") or ""),
             str(p.get("probable_role") or p.get("pitcher_role") or p.get("role") or ""),
             tuple(game_sig), tuple(summary_sig),
         ))
@@ -65131,7 +66127,7 @@ def render_undefeated_beta_tab(board, integrated=False):
             "PO Projection", "PO Line", "PO Same Line", "PO Timestamp", "Merge Timestamp", "PO vs Merge True Side Disagreement",
             "UB Fixed Core Projection", "Undefeated Beta Projection", "Undefeated Beta Side", "UB Side Flip vs Merge", "UB Flip Driver", "UB Side Math Check", "UB Edge Math Check", "Undefeated Beta Playability", "UB Calibrated Clear Probability %",
             "UB Skill/Matchup Delta", "UB Pitch Trend Delta", "UB Workload Delta", "UB Suppression Escape Delta", "UB Cap Adjustment", "UB Attribution Residual",
-            "UB BF P10", "UB BF P50", "UB BF P90", "UB IP P50", "UB Skill K/BF", "UB Matchup K/BF", "UB Lineup Exposure K%",
+            "UB BF P10", "UB BF P50", "UB BF P90", "UB IP P50", "UB Skill K/BF", "UB Matchup K/BF", "UB Lineup Exposure K%", "UB V1.8 Full Starter BF", "UB V1.8 Full Starter IP", "UB V1.8 Full Starter Sample", "UB V1.8 Full Starter Source", "UB Lineup Top3 K%", "UB Lineup Top5 K%", "UB Lineup High-K 25% Count", "UB Lineup High-K 30% Count", "UB Lineup Concentration Modifier", "UB Conversion Interaction K/BF", "UB Conversion Interaction Delta", "UB Conversion Interaction Status", "UB V1.9 Pitch Budget BF", "UB V1.9 Pitch Budget Pitches", "UB V1.9 Pitch Budget Expected PPB", "UB Pitch Budget Move BF", "UB Pitch Budget Authority", "UB Positive Leash Support", "UB Negative Hook Risk", "UB Contact Finishability Status", "UB Contact Finishability K/BF", "UB TTO Weighted K%", "UB TTO Rate K/BF Modifier", "UB Flip Evidence Status", "UB Flip Evidence Count",
             "UB K Opportunity Score", "UB Conversion Score", "UB Pitcher K% Used", "UB Whiff% Used", "UB CSW% Used", "UB PutAway% Used",
             "UB Current State", "UB Current State Authority", "UB Current State K/BF", "UB Current State Recent Consensus K/BF", "UB Current State Recent Weight",
             "UB Current State Support", "UB Current State Risk", "UB True Talent K/BF", "UB True Talent Sources", "UB Recency Decay K/BF", "UB Recency Decay Starts",
