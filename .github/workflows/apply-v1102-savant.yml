@@ -1,0 +1,42 @@
+name: Apply Undefeated V1.10.2 Savant Full Profile
+
+on:
+  push:
+    paths:
+      - 'apply_v1102_patch.py'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  apply-patch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Apply safe V1.10.2 patch
+        run: python apply_v1102_patch.py
+
+      - name: Compile app.py
+        run: python -m py_compile app.py
+
+      - name: Commit patched app and Savant profile
+        run: |
+          if git diff --quiet -- app.py learning_data/savant_full_pitcher_profiles.csv; then
+            echo "Nothing to commit"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add app.py learning_data/savant_full_pitcher_profiles.csv
+          git commit -m "Add Undefeated V1.10.2 Savant full pitcher profile"
+          git push origin HEAD:main
