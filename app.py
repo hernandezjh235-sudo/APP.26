@@ -775,7 +775,7 @@ except ModuleNotFoundError as _validation_import_error:
             "compatibility_fallback": True,
         }
 
-APP_VERSION = "ONE WAY PICKZ K UPSIDE + UNDEFEATED BETA V1.9 TARGETED COMPONENTS + ML PHASE2.1 2026-08-16"
+APP_VERSION = "ONE WAY PICKZ K UPSIDE + UNDEFEATED BETA V1.9.1 UI DTYPE HOTFIX + ML PHASE2.1 2026-08-17"
 FULL_APP_UPDATE_MARKER = "FULL_APP_CANONICAL_K_PIPELINE_2026_07_30"
 MERGE_V269_SAFE_UPDATE_MARKER = "V269_SAFE_SAVANT_ORDER_SHADOW_NO_CONTROL_PROJECTION_CHANGE"
 MERGE_V2610_DATA_HARDENING_MARKER = "V2610_MLBAM_HAND_FAIL_CLOSED_AUX_LAST_GOOD_NO_PRODUCTION_PROMOTION"
@@ -62184,9 +62184,9 @@ if render_batter_fs_tab is None:
 # Shadow challenger layered on the protected Merge V2.6.10 canonical control.
 # This block never mutates the Merge control table/board in place.
 # =============================================================================
-UNDEFEATED_BETA_VERSION = "UNDEFEATED_BETA_V1_9_TARGETED_COMPONENTS_2026_08_16"
-SPORTS_ANALYSIS_BRAIN_VERSION = "SPORTS_ANALYSIS_BRAIN_V1_8_TARGETED_RESCUE_2026_08_16"
-UNDEFEATED_BETA_MODE = "ACTIVE_CHALLENGER_V1_8_PRESERVE_MERGE_CONTROL"
+UNDEFEATED_BETA_VERSION = "UNDEFEATED_BETA_V1_10_1_SYNC_COHERENCE_2026_08_17"
+SPORTS_ANALYSIS_BRAIN_VERSION = "SPORTS_ANALYSIS_BRAIN_V1_10_1_SYNC_COHERENCE_2026_08_17"
+UNDEFEATED_BETA_MODE = "ACTIVE_CHALLENGER_V1_10_1_SYNC_COHERENCE"
 UB_BASELINE_CONTROL_VERSION = "MERGE_V2_6_10_PROTECTED_CONTROL"
 UB_DATA_DIR = os.path.join(STORAGE_DIR, "learning_data")
 os.makedirs(UB_DATA_DIR, exist_ok=True)
@@ -62333,6 +62333,43 @@ UB_CONFIG = {
     "v19_tto_strong_authority": 0.35,
     "v19_tto_max_kbf": 0.0045,
     "v19_flip_confirm_edge_k": 0.35,
+    # V1.10 preserve-wins / threshold-loss protection. Decision-layer gates are
+    # line-aware; the biological projection remains independently logged.
+    "v110_thin_flip_edge_k": 0.22,
+    "v110_thin_flip_probability": 0.55,
+    "v110_thin_flip_min_evidence": 3,
+    "v110_thin_flip_resolver_max_move_k": 0.30,
+    "v110_thin_flip_merge_weight": 0.58,
+    "v110_model_disagreement_gap_k": 0.75,
+    "v110_model_disagreement_watch_gap_k": 0.50,
+    "v110_over_floor_watch_margin_k": 0.00,
+    "v110_over_floor_veto_margin_k": -0.30,
+    "v110_over_floor_watch_prob_cap": 0.64,
+    "v110_over_floor_veto_prob_cap": 0.57,
+    "v110_fragility_watch_mass": 0.34,
+    "v110_fragility_high_mass": 0.42,
+    "v110_fragility_prob_cap": 0.66,
+    "v110_low_line_max": 3.5,
+    "v110_low_line_min_starts": 5,
+    "v110_low_line_l10_over_rate": 0.65,
+    "v110_low_line_l5_over_rate": 0.60,
+    "v110_low_line_avg_buffer_k": 0.35,
+    "v110_low_line_projection_band_k": 0.30,
+    "v110_low_line_resolver_max_move_k": 0.30,
+    "v110_current_role_kbf_min_games": 4,
+    "v110_current_role_kbf_min_bf": 36.0,
+    "v110_current_role_kbf_gap": 0.020,
+    "v110_current_role_kbf_authority": 0.18,
+    "v110_current_role_kbf_mixed_authority": 0.10,
+    "v110_current_role_kbf_max_move": 0.0045,
+    # V1.10.1 integrity hardening from pre-V1.10 CSV audit. These do not
+    # create a new projection family; they make comparison/workload provenance explicit.
+    "v1101_po_sync_stale_minutes": 45.0,
+    "v1101_workload_conflict_gap_bf": 1.75,
+    "v1101_workload_internal_tolerance_bf": 0.10,
+    "v1101_workload_resolved_gap_bf": 0.75,
+    "v1101_workload_conflict_prob_cap": 0.64,
+    "v1101_workload_conflict_edge_exempt_k": 0.75,
     "recency_decay_half_life_starts": 3.0,
     "recency_decay_max_starts": 10,
     "persistent_direction_min_history": 4,
@@ -65519,6 +65556,688 @@ def _ub_build_row(row, p):
     return out
 
 
+
+# =============================================================================
+# UNDEFEATED BETA V1.10 — PRESERVE-WINS / THRESHOLD-LOSS PROTECTION
+# The biological challenger remains independent. V1.10 adds:
+#   1) current-role K/BF reconciliation (small, line-independent raw adjustment),
+#   2) P25/P40 OVER workload-floor survival,
+#   3) exact-line fragility around the one-K threshold zone,
+#   4) low-line (2.5/3.5) historical threshold shadow,
+#   5) PO/Merge disagreement diagnostics,
+#   6) a narrowly-scoped final resolver for unsupported thin flips.
+# No pitcher/team/outcome names are hard-coded. Moneyline Phase 2.1 is untouched.
+# =============================================================================
+_ub_fixed_core_v19_active = _ub_fixed_core
+_ub_component_blend_profile_v19_active = _ub_component_blend_profile
+_ub_build_row_v19_active = _ub_build_row
+
+
+def _ub_v110_all_history_games(p):
+    """Return recent MLB game-log rows without discarding relief/opener appearances.
+
+    Older Beta helpers intentionally preferred starter rows. This companion view is
+    used only for CURRENT-ROLE conversion/role-volatility reconciliation so a recent
+    role change cannot be hidden by older starts.
+    """
+    p = p or {}
+    history = p.get("k_history_context_v256") if isinstance(p.get("k_history_context_v256"), dict) else {}
+    raw = history.get("game_log") if isinstance(history.get("game_log"), list) else []
+    clean, seen = [], set()
+    for game in raw:
+        if not isinstance(game, dict):
+            continue
+        date = str(game.get("date") or game.get("Date") or "")
+        game_pk = str(game.get("game_pk") or game.get("GamePk") or "")
+        key = game_pk or f"{date}|{game.get('opponent')}|{game.get('Ks')}|{game.get('IP')}"
+        if key in seen:
+            continue
+        seen.add(key)
+        role = str(game.get("role") or game.get("Role") or "UNKNOWN").upper()
+        bf = _ub_num(_ub_first([game], ["BF", "TBF", "batters_faced", "Batters Faced"], None), None)
+        ks = _ub_num(game.get("Ks"), None)
+        clean.append({
+            "Date": date, "GamePk": game_pk, "Role": role,
+            "BF": bf, "Ks": ks, "IP_float": baseball_ip_to_float(game.get("IP")),
+            "Pitches": _ub_num(_ub_first([game], ["pitch_count", "Pitches", "pitches", "PC"], None), None),
+        })
+    clean.sort(key=lambda g: str(g.get("Date") or ""), reverse=True)
+    return clean
+
+
+def _ub_v110_role_conversion_profile(p, row, base_core):
+    """Small line-independent current-role K/BF reconciliation.
+
+    Uses the latest raw game-log rows, including opener/relief work, because the
+    existing starter-only recent profile can legitimately miss a current role shift.
+    The modifier is aggressively shrunk and capped to avoid double-counting form.
+    """
+    games = _ub_v110_all_history_games(p)
+    usable = [g for g in games[:10] if g.get("BF") and g.get("Ks") is not None]
+    min_games = int(UB_CONFIG["v110_current_role_kbf_min_games"])
+    total_bf = sum(float(g["BF"]) for g in usable[:6])
+    if len(usable) < min_games or total_bf < float(UB_CONFIG["v110_current_role_kbf_min_bf"]):
+        return {"available": False, "modifier": 0.0, "reason": "INSUFFICIENT_CURRENT_ROLE_KBF", "games": len(usable), "bf": total_bf}
+
+    def pooled(sub):
+        bf = sum(float(g["BF"]) for g in sub if g.get("BF"))
+        ks = sum(float(g["Ks"]) for g in sub if g.get("Ks") is not None)
+        return None if bf <= 0 else ks / bf, bf
+
+    l3, bf3 = pooled(usable[:3])
+    l6, bf6 = pooled(usable[:6])
+    if l3 is None or l6 is None:
+        return {"available": False, "modifier": 0.0, "reason": "NO_POOLED_CURRENT_ROLE_KBF", "games": len(usable), "bf": total_bf}
+    consensus = 0.62 * l3 + 0.38 * l6
+    reference = float(base_core.get("matchup_kbf") or base_core.get("skill_kbf") or LEAGUE_AVG_K)
+    gap = consensus - reference
+    if abs(gap) < float(UB_CONFIG["v110_current_role_kbf_gap"]):
+        return {"available": True, "modifier": 0.0, "reason": "CURRENT_ROLE_KBF_WITHIN_DEADBAND", "games": len(usable), "bf": bf6, "l3": l3, "l6": l6, "consensus": consensus, "gap": gap}
+
+    recent_roles = [str(g.get("Role") or "UNKNOWN").upper() for g in usable[:5]]
+    starter_like = sum(1 for r in recent_roles if "START" in r)
+    relief_like = sum(1 for r in recent_roles if any(tok in r for tok in ("RELIEF", "RELIEVER", "OPENER", "BULK", "FOLLOW")))
+    mixed = bool(starter_like and relief_like) or bool(relief_like >= 3)
+    authority = float(UB_CONFIG["v110_current_role_kbf_mixed_authority"] if mixed else UB_CONFIG["v110_current_role_kbf_authority"])
+    modifier = float(clamp(gap * authority, -float(UB_CONFIG["v110_current_role_kbf_max_move"]), float(UB_CONFIG["v110_current_role_kbf_max_move"])))
+    return {
+        "available": True, "modifier": modifier, "reason": "CURRENT_ROLE_KBF_RECONCILIATION",
+        "games": len(usable), "bf": bf6, "l3": l3, "l6": l6, "consensus": consensus,
+        "gap": gap, "authority": authority, "mixed_role": mixed,
+        "recent_roles": recent_roles,
+    }
+
+
+def _ub_fixed_core(p, row, workload, recent, regime):
+    """V1.10 biological core: V1.9 plus one small current-role K/BF reconciliation."""
+    base = dict(_ub_fixed_core_v19_active(p, row, workload, recent, regime) or {})
+    if not base:
+        return base
+    prof = _ub_v110_role_conversion_profile(p or {}, row or {}, base)
+    mod = float(prof.get("modifier") or 0.0)
+    pre = float(base.get("matchup_kbf") or base.get("skill_kbf") or LEAGUE_AVG_K)
+    post = float(clamp(pre + mod, 0.08, 0.45))
+    base["v110_pre_role_reconcile_kbf"] = pre
+    base["v110_role_conversion_profile"] = prof
+    base["v110_role_kbf_modifier"] = post - pre
+    base["matchup_kbf"] = post
+    base["projection"] = post * float(_ub_num(workload.get("bf_p50"), DEFAULT_BF) or DEFAULT_BF)
+    return base
+
+
+def _ub_component_blend_profile(merge_projection, fixed, workload, recent, regime, data_quality):
+    """V1.10 attribution: reclassify current-role K/BF from the generic suppression bucket."""
+    comp = dict(_ub_component_blend_profile_v19_active(merge_projection, fixed, workload, recent, regime, data_quality) or {})
+    if not comp:
+        return comp
+    role_kbf = float((fixed or {}).get("v110_role_kbf_modifier") or 0.0)
+    merge_bf = float(comp.get("merge_bf") or (workload or {}).get("merge_bf") or DEFAULT_BF)
+    auth = float(comp.get("kbf_authority") or UB_CONFIG["component_kbf_authority_normal"])
+    role_delta = merge_bf * auth * role_kbf
+    if "suppression_delta" in comp:
+        comp["suppression_delta"] = float(comp.get("suppression_delta") or 0.0) - role_delta
+    comp["current_role_kbf"] = role_kbf
+    comp["current_role_conversion_delta"] = role_delta
+    total = sum(float(comp.get(k) or 0.0) for k in [
+        "skill_matchup_delta", "pitch_trend_delta", "suppression_delta", "conversion_interaction_delta",
+        "contact_finishability_delta", "tto_rate_delta", "current_role_conversion_delta", "workload_delta", "guard_adjustment"
+    ])
+    comp["attribution_residual"] = float(comp.get("projection") or merge_projection) - float(merge_projection) - total
+    comp["math_status"] = "PASS" if abs(float(comp["attribution_residual"])) <= 1e-6 else "FAIL"
+    fams = list(comp.get("signal_families") or [])
+    if abs(role_kbf) >= 0.0015:
+        fams.append("CURRENT_ROLE_KBF")
+    comp["signal_families"] = sorted(set(fams))
+    return comp
+
+
+def _ub_v110_normal_cdf(x):
+    return 0.5 * (1.0 + math.erf(float(x) / math.sqrt(2.0)))
+
+
+def _ub_v110_exact_k_probability(mean, sigma, k):
+    if sigma is None or sigma <= 0:
+        return 0.0
+    lo = (float(k) - 0.5 - float(mean)) / float(sigma)
+    hi = (float(k) + 0.5 - float(mean)) / float(sigma)
+    return float(clamp(_ub_v110_normal_cdf(hi) - _ub_v110_normal_cdf(lo), 0.0, 1.0))
+
+
+def _ub_v110_fragility_profile(out):
+    line = _ub_num((out or {}).get("Line"), None)
+    projection = _ub_num((out or {}).get("UB Biological Projection"), _ub_num((out or {}).get("Undefeated Beta Projection"), None))
+    if line is None or projection is None:
+        return {"status": "NO_LINE", "mass": 0.0}
+    # Recreate the same exact-line sigma used by the canonical distribution.
+    sigma = math.sqrt(max(0.35, float(projection)))
+    sigma = float(clamp(sigma, 1.05, 3.25))
+    lower = int(math.floor(float(line)))
+    upper = lower + 1
+    p_lower = _ub_v110_exact_k_probability(projection, sigma, lower)
+    p_upper = _ub_v110_exact_k_probability(projection, sigma, upper)
+    mass = float(clamp(p_lower + p_upper, 0.0, 1.0))
+    status = "HIGH" if mass >= float(UB_CONFIG["v110_fragility_high_mass"]) else "WATCH" if mass >= float(UB_CONFIG["v110_fragility_watch_mass"]) else "STABLE"
+    return {"status": status, "mass": mass, "lower_k": lower, "upper_k": upper, "p_lower": p_lower, "p_upper": p_upper}
+
+
+def _ub_v110_over_floor_profile(out, p=None):
+    side = str((out or {}).get("UB Biological Side") or (out or {}).get("Undefeated Beta Side") or "").upper()
+    line = _ub_num((out or {}).get("Line"), None)
+    proj = _ub_num((out or {}).get("UB Biological Projection"), _ub_num((out or {}).get("Undefeated Beta Projection"), None))
+    bf25 = _ub_num((out or {}).get("UB BF P25"), None)
+    bf50 = _ub_num((out or {}).get("UB BF P50"), None)
+    if side != "OVER" or line is None or proj is None or not bf25 or not bf50:
+        return {"status": "NOT_OVER", "p25_k": None, "p40_k": None, "reason": "NOT_APPLICABLE"}
+    rate = float(proj) / max(1e-9, float(bf50))
+    bf40 = float(bf25) + 0.60 * max(0.0, float(bf50) - float(bf25))
+    p25_k = float(bf25) * rate
+    p40_k = bf40 * rate
+    margin = p40_k - float(line)
+    negative_hook = bool((out or {}).get("UB Negative Hook Risk"))
+    recent_games = _ub_history_games(p or {})
+    recent_ip = [float(g.get("IP_float")) for g in recent_games[:5] if g.get("IP_float") is not None]
+    last_ip = recent_ip[0] if recent_ip else None
+    short_rate = (sum(1 for ip in recent_ip if ip < 4.5) / len(recent_ip)) if recent_ip else 0.0
+    recent_short_warning = bool((last_ip is not None and last_ip < 4.0) or short_rate >= 0.40)
+    if margin <= float(UB_CONFIG["v110_over_floor_veto_margin_k"]) or (negative_hook and p40_k < float(line)):
+        status = "VETO"
+    elif margin < float(UB_CONFIG["v110_over_floor_watch_margin_k"]) or p25_k < float(line) or (recent_short_warning and margin < 0.75):
+        status = "WATCH"
+    else:
+        status = "CLEAR"
+    return {
+        "status": status, "p25_k": p25_k, "p40_k": p40_k, "p40_bf": bf40,
+        "rate": rate, "margin": margin, "last_start_ip": last_ip, "recent_short_start_rate": short_rate,
+        "reason": f"P25 {p25_k:.2f} K; P40 {p40_k:.2f} K vs {float(line):.1f}; negative hook={negative_hook}; last IP={last_ip}; short-start rate={short_rate:.0%}",
+    }
+
+
+def _ub_v110_low_line_profile(p, out):
+    line = _ub_num((out or {}).get("Line"), None)
+    side = str((out or {}).get("UB Biological Side") or (out or {}).get("Undefeated Beta Side") or "").upper()
+    proj = _ub_num((out or {}).get("UB Biological Projection"), _ub_num((out or {}).get("Undefeated Beta Projection"), None))
+    if line is None or proj is None or float(line) > float(UB_CONFIG["v110_low_line_max"]):
+        return {"status": "NOT_LOW_LINE", "strong_over": False}
+    games = [g for g in _ub_history_games(p or {}) if g.get("Ks") is not None]
+    if len(games) < int(UB_CONFIG["v110_low_line_min_starts"]):
+        return {"status": "INSUFFICIENT_HISTORY", "strong_over": False, "starts": len(games)}
+    l5 = [float(g["Ks"]) for g in games[:5]]
+    l10 = [float(g["Ks"]) for g in games[:10]]
+    over5 = sum(1 for k in l5 if k > float(line)) / max(1, len(l5))
+    over10 = sum(1 for k in l10 if k > float(line)) / max(1, len(l10))
+    avg5 = float(np.mean(l5)) if l5 else 0.0
+    avg10 = float(np.mean(l10)) if l10 else 0.0
+    bf50 = float(_ub_num((out or {}).get("UB BF P50"), 0.0) or 0.0)
+    opp_k = _ub_rate((out or {}).get("UB Lineup Exposure K%"), None)
+    strong = bool(
+        side == "UNDER"
+        and abs(float(proj) - float(line)) <= float(UB_CONFIG["v110_low_line_projection_band_k"])
+        and over10 >= float(UB_CONFIG["v110_low_line_l10_over_rate"])
+        and over5 >= float(UB_CONFIG["v110_low_line_l5_over_rate"])
+        and avg5 >= float(line) + float(UB_CONFIG["v110_low_line_avg_buffer_k"])
+        and bf50 >= 18.0
+        and (opp_k is None or opp_k >= 0.19)
+    )
+    status = "STRONG_OVER_THRESHOLD" if strong else "UNDER_BREAKOUT_WATCH" if side == "UNDER" and over10 >= 0.60 else "NEUTRAL"
+    return {
+        "status": status, "strong_over": strong, "starts": len(games),
+        "l5_over_rate": over5, "l10_over_rate": over10, "l5_avg": avg5, "l10_avg": avg10,
+        "bf50": bf50, "opp_k": opp_k,
+        "reason": f"L5 {over5*100:.0f}% over / {avg5:.2f} avg; L10 {over10*100:.0f}% over / {avg10:.2f} avg",
+    }
+
+
+def _ub_v110_model_disagreement_profile(out):
+    ub_side = str((out or {}).get("UB Biological Side") or (out or {}).get("Undefeated Beta Side") or "").upper()
+    merge_side = str((out or {}).get("Merge Control Side") or "").upper()
+    po_side = str((out or {}).get("PO Side Same-Line") or "").upper()
+    po_same = bool((out or {}).get("PO Same Line")) and po_side in {"OVER", "UNDER"}
+    ub_proj = _ub_num((out or {}).get("UB Biological Projection"), _ub_num((out or {}).get("Undefeated Beta Projection"), None))
+    po_proj = _ub_num((out or {}).get("PO Projection"), None)
+    gap = None if ub_proj is None or po_proj is None else abs(float(ub_proj) - float(po_proj))
+    opposite = bool(po_same and ub_side in {"OVER", "UNDER"} and po_side != ub_side)
+    control_consensus = bool(opposite and merge_side in {"OVER", "UNDER"} and po_side == merge_side)
+    if opposite and gap is not None and gap >= float(UB_CONFIG["v110_model_disagreement_gap_k"]):
+        status = "STRONG_DISAGREEMENT"
+    elif opposite and gap is not None and gap >= float(UB_CONFIG["v110_model_disagreement_watch_gap_k"]):
+        status = "WATCH_DISAGREEMENT"
+    elif opposite:
+        status = "SIDE_DISAGREEMENT"
+    else:
+        status = "AGREE_OR_UNAVAILABLE"
+    return {"status": status, "opposite": opposite, "control_consensus": control_consensus, "gap_k": gap, "po_side": po_side, "merge_side": merge_side}
+
+
+def _ub_v110_probability_for_projection(projection, line, side, history_std=None):
+    if projection is None or line is None or side not in {"OVER", "UNDER"}:
+        return 0.5
+    dist = _v265_exact_line_distribution(float(projection), float(line), history_std=history_std)
+    p_over = _ub_num(dist.get("over_probability"), 0.5)
+    return float(p_over if side == "OVER" else 1.0 - p_over)
+
+
+def _ub_build_row(row, p):
+    """V1.10 final wrapper: preserve raw biology, then apply tightly-scoped decision protection."""
+    out = _ub_build_row_v19_active(row, p)
+    if not out:
+        return out
+
+    # Preserve untouched biological output before any sportsbook-line decision resolver.
+    biological_projection = float(_ub_num(out.get("Undefeated Beta Projection"), out.get("Merge Control Projection")) or out.get("Merge Control Projection") or 0.0)
+    line = _ub_num(out.get("Line"), None)
+    biological_side = str(out.get("Undefeated Beta Side") or "").upper()
+    merge_projection = float(_ub_num(out.get("Merge Control Projection"), biological_projection) or biological_projection)
+    merge_side = str(out.get("Merge Control Side") or "").upper()
+    biological_prob = float(_ub_num(out.get("UB Calibrated Clear Probability %"), 50.0) or 50.0) / 100.0
+    out["UB Biological Projection"] = round(biological_projection, 2)
+    out["UB Biological Side"] = biological_side
+    out["UB Biological Edge"] = None if line is None else round(biological_projection - float(line), 2)
+    out["UB Biological Clear Probability %"] = round(biological_prob * 100.0, 1)
+
+    role_prof = (out.get("UB Signal Ledger JSON") or "")
+    role_reconcile = _ub_v110_role_conversion_profile(p or {}, row or {}, {
+        "matchup_kbf": _ub_num(out.get("UB Matchup K/BF"), LEAGUE_AVG_K),
+        "skill_kbf": _ub_num(out.get("UB Skill K/BF"), LEAGUE_AVG_K),
+    })
+    out["UB Current Role K/BF Available"] = bool(role_reconcile.get("available"))
+    out["UB Current Role K/BF L3"] = None if role_reconcile.get("l3") is None else round(float(role_reconcile.get("l3"))*100.0, 2)
+    out["UB Current Role K/BF L6"] = None if role_reconcile.get("l6") is None else round(float(role_reconcile.get("l6"))*100.0, 2)
+    out["UB Current Role K/BF Consensus"] = None if role_reconcile.get("consensus") is None else round(float(role_reconcile.get("consensus"))*100.0, 2)
+    out["UB Current Role K/BF Modifier"] = round(float(role_reconcile.get("modifier") or 0.0), 5)
+    _v110_merge_bf = float(_ub_num(out.get("UB Merge BF Component"), DEFAULT_BF) or DEFAULT_BF)
+    _v110_kbf_auth = float(_ub_num(out.get("UB KBF Authority"), UB_CONFIG["component_kbf_authority_normal"]) or UB_CONFIG["component_kbf_authority_normal"])
+    out["UB Current Role K/BF Delta"] = round(_v110_merge_bf * _v110_kbf_auth * float(role_reconcile.get("modifier") or 0.0), 3)
+    out["UB Current Role Mixed"] = bool(role_reconcile.get("mixed_role"))
+    out["UB Current Role K/BF Reason"] = role_reconcile.get("reason")
+
+    fragility = _ub_v110_fragility_profile(out)
+    over_floor = _ub_v110_over_floor_profile(out, p or {})
+    low_line = _ub_v110_low_line_profile(p or {}, out)
+    disagree = _ub_v110_model_disagreement_profile(out)
+    out.update({
+        "UB Exact Line Fragility": fragility.get("status"),
+        "UB Exact Line One-K Zone Mass %": round(float(fragility.get("mass") or 0.0)*100.0, 1),
+        "UB Exact Line Lower K": fragility.get("lower_k"),
+        "UB Exact Line Upper K": fragility.get("upper_k"),
+        "UB OVER Floor Survival": over_floor.get("status"),
+        "UB OVER P25 K": None if over_floor.get("p25_k") is None else round(float(over_floor.get("p25_k")), 2),
+        "UB OVER P40 K": None if over_floor.get("p40_k") is None else round(float(over_floor.get("p40_k")), 2),
+        "UB OVER Floor Margin K": None if over_floor.get("margin") is None else round(float(over_floor.get("margin")), 2),
+        "UB OVER Last Start IP": over_floor.get("last_start_ip"),
+        "UB OVER Recent Short-Start %": round(float(over_floor.get("recent_short_start_rate") or 0.0)*100.0, 1),
+        "UB OVER Floor Reason": over_floor.get("reason"),
+        "UB Low-Line Threshold Status": low_line.get("status"),
+        "UB Low-Line L5 Over %": None if low_line.get("l5_over_rate") is None else round(float(low_line.get("l5_over_rate"))*100.0, 1),
+        "UB Low-Line L10 Over %": None if low_line.get("l10_over_rate") is None else round(float(low_line.get("l10_over_rate"))*100.0, 1),
+        "UB Low-Line L5 Avg K": None if low_line.get("l5_avg") is None else round(float(low_line.get("l5_avg")), 2),
+        "UB Low-Line L10 Avg K": None if low_line.get("l10_avg") is None else round(float(low_line.get("l10_avg")), 2),
+        "UB Low-Line Threshold Reason": low_line.get("reason"),
+        "UB Model Disagreement Status": disagree.get("status"),
+        "UB vs PO Projection Gap K": None if disagree.get("gap_k") is None else round(float(disagree.get("gap_k")), 2),
+        "UB PO+Merge Control Consensus": bool(disagree.get("control_consensus")),
+    })
+
+    final_projection = biological_projection
+    final_side = biological_side
+    resolver_reasons = []
+    resolver_adjustment = 0.0
+    flip = _ub_v19_flip_evidence(out)
+    flip_count = int(flip.get("count") or 0)
+    raw_edge_abs = abs(biological_projection - float(line)) if line is not None else 0.0
+    lineup_stage = str(out.get("UB Lineup Stage") or "EXPECTED").upper()
+    order_conf = _ub_num(_ub_first([p or {}, row or {}], ["order_confidence_pct", "batting_order_confidence", "Order Confidence", "Expected Order Confidence"], None), None)
+    lineup_weak = bool(lineup_stage != "CONFIRMED" or (order_conf is not None and float(order_conf) < 65.0))
+
+    # (A) Strong low-line threshold evidence can rescue a thin 2.5/3.5 UNDER.
+    # It moves only the FINAL resolver projection; biological K remains logged unchanged.
+    if line is not None and bool(low_line.get("strong_over")) and biological_side == "UNDER":
+        hist_anchor = 0.60 * float(low_line.get("l5_avg") or biological_projection) + 0.40 * float(low_line.get("l10_avg") or biological_projection)
+        desired = max(biological_projection, 0.70 * biological_projection + 0.30 * hist_anchor)
+        move = min(float(UB_CONFIG["v110_low_line_resolver_max_move_k"]), max(0.0, desired - biological_projection))
+        if move > 0.01:
+            final_projection = biological_projection + move
+            resolver_adjustment += move
+            resolver_reasons.append("LOW_LINE_HISTORICAL_THRESHOLD_RESCUE")
+
+    # (B) Unsupported thin flips get shrunk toward the protected Merge control.
+    # Trigger requires a thin probability/edge PLUS weak evidence/data or PO+Merge consensus.
+    if line is not None and merge_side in {"OVER", "UNDER"} and biological_side in {"OVER", "UNDER"} and biological_side != merge_side:
+        thin = bool(raw_edge_abs <= float(UB_CONFIG["v110_thin_flip_edge_k"]) or biological_prob <= float(UB_CONFIG["v110_thin_flip_probability"]))
+        weak_support = bool(flip_count < int(UB_CONFIG["v110_thin_flip_min_evidence"]))
+        trust_warning = bool(lineup_weak or disagree.get("control_consensus") or out.get("UB Negative Hook Risk"))
+        if thin and weak_support and trust_warning:
+            target = (1.0 - float(UB_CONFIG["v110_thin_flip_merge_weight"])) * biological_projection + float(UB_CONFIG["v110_thin_flip_merge_weight"]) * merge_projection
+            delta = float(clamp(target - final_projection, -float(UB_CONFIG["v110_thin_flip_resolver_max_move_k"]), float(UB_CONFIG["v110_thin_flip_resolver_max_move_k"])))
+            if abs(delta) > 0.01:
+                final_projection += delta
+                resolver_adjustment += delta
+                resolver_reasons.append("THIN_FLIP_PRESERVE_CONTROL")
+
+    if line is not None:
+        final_side = "OVER" if final_projection > float(line) else "UNDER" if final_projection < float(line) else "PUSH"
+    final_projection = round(float(final_projection), 2)
+    out["Undefeated Beta Projection"] = final_projection
+    out["Undefeated Beta Side"] = final_side
+    out["Undefeated Beta Edge"] = None if line is None else round(final_projection - float(line), 2)
+    out["UB Decision Resolver Adjustment K"] = round(float(final_projection - biological_projection), 3)
+    out["UB Decision Resolver Applied"] = bool(abs(final_projection - biological_projection) >= 0.01)
+    out["UB Decision Resolver Reasons"] = "; ".join(resolver_reasons) or "NONE"
+    out["UB Side Flip vs Merge"] = bool(line is not None and merge_side in {"OVER","UNDER"} and final_side in {"OVER","UNDER"} and final_side != merge_side)
+    out["UB Side Math Check"] = bool(line is None or final_side == ("OVER" if final_projection > float(line) else "UNDER" if final_projection < float(line) else "PUSH"))
+    out["UB Edge Math Check"] = bool(line is None or abs((final_projection - float(line)) - float(out.get("Undefeated Beta Edge") or 0.0)) <= 1e-9)
+
+    # Recompute final line probability for the resolved projection. Preserve original
+    # biological probability separately; the resolver probability is intentionally capped.
+    history = (p or {}).get("k_history_context_v256") if isinstance((p or {}).get("k_history_context_v256"), dict) else {}
+    hist_std = _ub_num(history.get("k_standard_deviation"), None)
+    final_prob = biological_prob if abs(final_projection - biological_projection) < 0.005 else _ub_v110_probability_for_projection(final_projection, line, final_side, hist_std)
+    cap_reasons = []
+    if fragility.get("status") in {"WATCH", "HIGH"}:
+        final_prob = min(final_prob, float(UB_CONFIG["v110_fragility_prob_cap"]))
+        cap_reasons.append("EXACT_LINE_FRAGILITY")
+    if final_side == "OVER" and over_floor.get("status") == "WATCH":
+        final_prob = min(final_prob, float(UB_CONFIG["v110_over_floor_watch_prob_cap"]))
+        cap_reasons.append("OVER_WORKLOAD_FLOOR_WATCH")
+    if final_side == "OVER" and over_floor.get("status") == "VETO":
+        final_prob = min(final_prob, float(UB_CONFIG["v110_over_floor_veto_prob_cap"]))
+        cap_reasons.append("OVER_WORKLOAD_FLOOR_VETO")
+    if disagree.get("status") == "STRONG_DISAGREEMENT" and raw_edge_abs < 0.60:
+        final_prob = min(final_prob, 0.61)
+        cap_reasons.append("STRONG_MODEL_DISAGREEMENT")
+    if resolver_reasons:
+        final_prob = min(final_prob, 0.60)
+        cap_reasons.append("DECISION_RESOLVER_CAP")
+    out["UB Calibrated Clear Probability %"] = round(float(clamp(final_prob, 0.01, 0.99))*100.0, 1)
+    prior_caps = str(out.get("UB Confidence Cap Reason") or "NONE")
+    all_caps = [x for x in prior_caps.split("; ") if x and x != "NONE"] + cap_reasons
+    out["UB Confidence Cap Reason"] = "; ".join(dict.fromkeys(all_caps)) or "NONE"
+
+    # Decision/playability downgrades for fragile or workload-dependent OVERs and strong disagreement.
+    old_play = str(out.get("Undefeated Beta Playability") or "TRACK")
+    severity = 0
+    decision_reasons = []
+    if final_side == "OVER" and over_floor.get("status") == "VETO":
+        severity = max(severity, 2); decision_reasons.append("V1.10_OVER_WORKLOAD_FLOOR_VETO")
+    elif final_side == "OVER" and over_floor.get("status") == "WATCH":
+        severity = max(severity, 1); decision_reasons.append("V1.10_OVER_WORKLOAD_FLOOR_WATCH")
+    if fragility.get("status") == "HIGH" and abs(float(out.get("Undefeated Beta Edge") or 0.0)) < 0.60:
+        severity = max(severity, 1); decision_reasons.append("V1.10_EXACT_LINE_FRAGILITY")
+    if disagree.get("status") == "STRONG_DISAGREEMENT" and abs(float(out.get("Undefeated Beta Edge") or 0.0)) < 0.60:
+        severity = max(severity, 1); decision_reasons.append("V1.10_MODEL_DISAGREEMENT")
+    if resolver_reasons:
+        severity = max(severity, 1); decision_reasons.extend(resolver_reasons)
+    downgrade_once = {"OFFICIAL_PLAY":"LEAN", "LEAN":"TRACK", "TRACK":"PASS", "PASS":"PASS", "NO_LINE":"NO_LINE"}
+    new_play = old_play
+    for _ in range(severity):
+        new_play = downgrade_once.get(new_play, "PASS")
+    if new_play != old_play:
+        out["Undefeated Beta Playability"] = new_play
+        out["Undefeated Beta Decision State"] = f"{new_play}_{final_side}"
+        reason = str(out.get("Undefeated Beta Decision Reason") or "")
+        out["Undefeated Beta Decision Reason"] = (reason + "; " + "; ".join(decision_reasons)).strip("; ")
+        if out.get("Best Play Score") is not None:
+            out["Best Play Score"] = max(0.0, float(_ub_num(out.get("Best Play Score"), 0.0) or 0.0) - 6.0*severity)
+        if new_play == "PASS":
+            out["Best Play Tier"] = "PASS"
+
+    out["UB Biological No Sportsbook Leakage"] = True
+    out["UB Final Resolver Uses Sportsbook Line"] = bool(resolver_reasons)
+    out["UB No Sportsbook Leakage"] = bool(not resolver_reasons)
+    _v110_raw_residual = float(_ub_num(out.get("UB Attribution Residual"), 0.0) or 0.0)
+    _v110_final_residual = _v110_raw_residual + (float(final_projection) - float(biological_projection)) - float(out.get("UB Decision Resolver Adjustment K") or 0.0)
+    out["UB Final Attribution Residual"] = round(_v110_final_residual, 6)
+    out["UB Final Attribution Reconciles"] = bool(abs(_v110_final_residual) <= 1e-6)
+    out["UB V1.10 Formula Check"] = bool(out.get("UB Side Math Check") and out.get("UB Edge Math Check") and out.get("UB Final Attribution Reconciles"))
+    out["UB Pregame Feature Persistence"] = "COMPLETE_V1_10_THRESHOLD_PROTECTION"
+    return out
+
+
+# =============================================================================
+# UNDEFEATED BETA V1.10.1 — PO SYNC + FINAL WORKLOAD PROVENANCE LOCK
+#
+# Two integrity changes only:
+#   A) PO comparison side is derived from the exact PO projection/line and is
+#      eligible for disagreement logic only when pitcher/game/line/refresh are
+#      synchronized. A stale text side can never overrule the math.
+#   B) One component-blended BF/IP distribution is explicitly declared as the
+#      final decision workload. Competing upstream BF sources are audited, never
+#      silently averaged. Unresolved conflicts reduce trust, not biological K.
+# Moneyline Phase 2.1 and the protected Merge/K pipeline remain unchanged.
+# =============================================================================
+_ub_build_row_v110_active = _ub_build_row
+_ub_build_row_v19_pre_sync_active = _ub_build_row_v19_active
+
+
+def _ub_v1101_timestamp(value):
+    try:
+        parsed = _v265_iso_timestamp(value) if "_v265_iso_timestamp" in globals() else None
+        if parsed is not None:
+            return parsed
+    except Exception:
+        pass
+    try:
+        return pd.to_datetime(value, errors="coerce", utc=True).to_pydatetime() if value not in (None, "") else None
+    except Exception:
+        return None
+
+
+def _ub_v1101_po_sync_profile(out, row=None, p=None):
+    """Return one mathematically synchronized PO comparison state.
+
+    Stored PO side text is diagnostic only. The comparison side is always
+    re-derived from PO projection versus PO line. Missing/old refresh metadata
+    fails closed so PO cannot influence a Beta flip on an unverifiable state.
+    """
+    out = out or {}; row = row or {}; p = p or {}
+    line = _ub_num(out.get("Line"), _ub_num(_ub_first([row, p], ["Canonical Line", "UD/Line", "line", "underdog_line"], None), None))
+    po_projection = _ub_num(_ub_first([p, out, row], ["current_po_projection", "po_shadow_projection", "PO Projection"], None), None)
+    po_line = _ub_num(_ub_first([p, out, row], ["current_po_line", "po_shadow_line", "PO Line"], None), None)
+    stored_side = str(_ub_first([p, out, row], ["current_po_side", "po_shadow_side", "PO Side Same-Line", "PO Side"], "") or "").upper().strip()
+    math_side = ""
+    if po_projection is not None and po_line is not None:
+        if float(po_projection) > float(po_line):
+            math_side = "OVER"
+        elif float(po_projection) < float(po_line):
+            math_side = "UNDER"
+        else:
+            math_side = "PUSH"
+
+    matchup = str(out.get("Matchup") or row.get("Matchup") or p.get("matchup") or "").strip().upper()
+    po_matchup = str(_ub_first([p, out, row], ["current_po_matchup", "po_shadow_matchup", "PO Matchup"], "") or "").strip().upper()
+    row_bound_po = bool(any(k in p for k in ("current_po_projection", "po_shadow_projection")))
+    if not po_matchup and row_bound_po:
+        po_matchup = matchup
+    try:
+        matchup_key = _v265_matchup_identity(matchup)
+        po_matchup_key = _v265_matchup_identity(po_matchup)
+        same_game = bool(matchup_key and po_matchup_key and matchup_key == po_matchup_key)
+    except Exception:
+        same_game = bool(matchup and po_matchup and matchup == po_matchup)
+
+    same_line = bool(line is not None and po_line is not None and abs(float(line) - float(po_line)) <= 0.001)
+    po_ts_raw = _ub_first([p, out, row], ["current_po_timestamp", "po_shadow_timestamp", "PO Timestamp"], "")
+    merge_ts_raw = _ub_first([p, out, row], ["projection_generated_at", "projection_timestamp", "Merge Timestamp", "Pregame Timestamp"], "")
+    po_ts = _ub_v1101_timestamp(po_ts_raw)
+    merge_ts = _ub_v1101_timestamp(merge_ts_raw)
+    same_refresh = False
+    refresh_gap_min = None
+    if po_ts is not None and merge_ts is not None:
+        try:
+            refresh_gap_min = abs((merge_ts - po_ts).total_seconds()) / 60.0
+            same_refresh = bool(refresh_gap_min <= float(UB_CONFIG["v1101_po_sync_stale_minutes"]))
+        except Exception:
+            same_refresh = False
+
+    projection_ok = bool(po_projection is not None and po_line is not None and math_side in {"OVER", "UNDER"})
+    comparable = bool(projection_ok and same_line and same_game and same_refresh)
+    side_mismatch = bool(stored_side in {"OVER", "UNDER"} and math_side in {"OVER", "UNDER"} and stored_side != math_side)
+    if not projection_ok:
+        state = "PO_UNAVAILABLE"
+    elif not same_game:
+        state = "PO_GAME_MISMATCH"
+    elif not same_line:
+        state = "PO_LINE_MISMATCH"
+    elif po_ts is None or merge_ts is None:
+        state = "PO_REFRESH_UNVERIFIED"
+    elif not same_refresh:
+        state = "PO_STALE"
+    elif side_mismatch:
+        state = "PO_SYNCED_SIDE_TEXT_CORRECTED"
+    else:
+        state = "PO_SYNCED"
+    return {
+        "projection": po_projection, "line": po_line, "stored_side": stored_side,
+        "math_side": math_side, "same_line": same_line, "same_game": same_game,
+        "same_refresh": same_refresh, "refresh_gap_minutes": refresh_gap_min,
+        "comparable": comparable, "side_text_mismatch": side_mismatch,
+        "state": state, "matchup": po_matchup,
+    }
+
+
+def _ub_build_row_v19_active(row, p):
+    """V1.10.1 PO-sync shim injected before V1.10 decision protection."""
+    out = _ub_build_row_v19_pre_sync_active(row, p)
+    if not out:
+        return out
+    sync = _ub_v1101_po_sync_profile(out, row or {}, p or {})
+    out["PO Projection"] = sync.get("projection")
+    out["PO Line"] = sync.get("line")
+    # For every Beta resolver/ranking consumer, PO Same Line means fully comparable,
+    # not merely numerically equal line values.
+    out["PO Same Line"] = bool(sync.get("comparable"))
+    out["PO Physical Same Line"] = bool(sync.get("same_line"))
+    out["PO Same Game"] = bool(sync.get("same_game"))
+    out["PO Same Refresh State"] = bool(sync.get("same_refresh"))
+    out["PO Comparable"] = bool(sync.get("comparable"))
+    out["PO Sync State"] = sync.get("state")
+    out["PO Refresh Gap Minutes"] = None if sync.get("refresh_gap_minutes") is None else round(float(sync.get("refresh_gap_minutes")), 1)
+    out["PO Stored Side"] = sync.get("stored_side") or "UNAVAILABLE"
+    out["PO Mathematical Side"] = sync.get("math_side") or "UNAVAILABLE"
+    out["PO Side Integrity Mismatch"] = bool(sync.get("side_text_mismatch"))
+    out["PO Side Same-Line"] = sync.get("math_side") if sync.get("comparable") else "SYNC_UNAVAILABLE"
+    merge_side = str(out.get("Merge Control Side") or "").upper()
+    out["PO vs Merge True Side Disagreement"] = bool(sync.get("comparable") and sync.get("math_side") in {"OVER", "UNDER"} and merge_side in {"OVER", "UNDER"} and sync.get("math_side") != merge_side)
+    # Brain/model agreement is ranking evidence only, so recompute it after PO sync.
+    try:
+        out.update(_brain_profile(p or {}, row or {}, out))
+    except Exception:
+        pass
+    return out
+
+
+def _ub_v1101_workload_provenance(out, row=None, p=None):
+    """Audit all current BF sources against the one final decision distribution.
+
+    No averaging occurs here. The component-blended distribution remains the lock.
+    A conflict is a trust/calibration warning unless current-role/recent-starter
+    authority clearly resolves the disagreement.
+    """
+    out = out or {}; row = row or {}; p = p or {}
+    locked = _ub_num(out.get("UB BF P50"), _ub_num(out.get("UB Blended BF"), None))
+    blended = _ub_num(out.get("UB Blended BF"), None)
+    internal_gap = None if locked is None or blended is None else abs(float(locked) - float(blended))
+    internal_ok = bool(internal_gap is None or internal_gap <= float(UB_CONFIG["v1101_workload_internal_tolerance_bf"]))
+
+    raw_sources = [
+        ("CANONICAL_EXPECTED_BF", _ub_num(_ub_first([row, p], ["Canonical Expected BF", "canonical_expected_bf"], None), None)),
+        ("CURRENT_EXPECTED_BF", _ub_num(_ub_first([p, row], ["expected_bf", "Exp BF", "Proj BF"], None), None)),
+        ("APP97_RECONCILED_BF", _ub_num(_ub_first([p, row], ["APP97 Reconciled Expected BF", "APP97 Expected BF"], None), None)),
+        ("APP100_PROJECTED_BF", _ub_num(_ub_first([row, p], ["APP100 Projected BF"], None), None)),
+    ]
+    sources = []
+    seen = set()
+    for label, value in raw_sources:
+        if value is None or not (4.0 <= float(value) <= 34.0):
+            continue
+        key = round(float(value), 2)
+        # Equal values from duplicate aliases are one source state, not two votes.
+        if key in seen:
+            continue
+        seen.add(key)
+        sources.append((label, float(value)))
+    if locked is not None:
+        sources_with_lock = [("UB_DECISION_LOCK", float(locked))] + sources
+    else:
+        sources_with_lock = sources[:]
+    values = [v for _, v in sources]
+    source_range = (max(values) - min(values)) if len(values) >= 2 else 0.0
+    max_locked_gap = max((abs(float(locked) - v) for _, v in sources), default=0.0) if locked is not None else 0.0
+    external_conflict = bool(len(values) >= 2 and source_range >= float(UB_CONFIG["v1101_workload_conflict_gap_bf"]))
+    recent_authority = bool(out.get("UB Recent Starter Authority"))
+    confirmed_role = str(out.get("UB Role Authority") or "").upper() == "CURRENT_CONFIRMED_ROLE"
+    high_conf = str(out.get("UB Workload Confidence") or "").upper() == "HIGH"
+    resolved = bool(external_conflict and internal_ok and (recent_authority or confirmed_role) and high_conf)
+    unresolved = bool((external_conflict and not resolved) or not internal_ok)
+    if not internal_ok:
+        resolution = "INTERNAL_LOCK_FAILURE"
+    elif resolved:
+        resolution = "RESOLVED_BY_CURRENT_ROLE_RECENT_STARTS"
+    elif external_conflict:
+        resolution = "UNRESOLVED_SOURCE_CONFLICT"
+    else:
+        resolution = "COHERENT"
+    return {
+        "locked_bf": locked, "blended_bf": blended, "internal_gap": internal_gap,
+        "internal_ok": internal_ok, "sources": sources_with_lock, "source_range": source_range,
+        "max_locked_gap": max_locked_gap, "external_conflict": external_conflict,
+        "resolved": resolved, "unresolved": unresolved, "resolution": resolution,
+    }
+
+
+def _ub_build_row(row, p):
+    """V1.10.1 final wrapper: V1.10 decisions + PO sync + workload provenance lock."""
+    out = _ub_build_row_v110_active(row, p)
+    if not out:
+        return out
+    prov = _ub_v1101_workload_provenance(out, row or {}, p or {})
+    source_text = "; ".join(f"{name}={value:.2f}" for name, value in (prov.get("sources") or [])) or "NO_COMPARABLE_BF_SOURCES"
+    out["UB Decision Workload Source"] = "COMPONENT_BLENDED_BF_IP_DISTRIBUTION_LOCK"
+    out["UB Decision Workload BF P50"] = None if prov.get("locked_bf") is None else round(float(prov.get("locked_bf")), 2)
+    out["UB Workload Internal Lock Check"] = bool(prov.get("internal_ok"))
+    out["UB Workload Internal Lock Gap BF"] = None if prov.get("internal_gap") is None else round(float(prov.get("internal_gap")), 3)
+    out["UB Workload Source Conflict"] = bool(prov.get("external_conflict"))
+    out["UB Workload Source Conflict Unresolved"] = bool(prov.get("unresolved"))
+    out["UB Workload Source Range BF"] = round(float(prov.get("source_range") or 0.0), 2)
+    out["UB Workload Source Max Gap To Lock BF"] = round(float(prov.get("max_locked_gap") or 0.0), 2)
+    out["UB Workload Source States"] = source_text
+    out["UB Workload Conflict Resolution"] = prov.get("resolution")
+
+    conflict_reasons = []
+    if not prov.get("internal_ok"):
+        conflict_reasons.append("WORKLOAD_INTERNAL_LOCK_FAILURE")
+    elif prov.get("unresolved"):
+        conflict_reasons.append("WORKLOAD_SOURCE_CONFLICT")
+    if conflict_reasons:
+        current_prob = float(_ub_num(out.get("UB Calibrated Clear Probability %"), 50.0) or 50.0) / 100.0
+        current_prob = min(current_prob, float(UB_CONFIG["v1101_workload_conflict_prob_cap"]))
+        out["UB Calibrated Clear Probability %"] = round(current_prob * 100.0, 1)
+        caps = [x for x in str(out.get("UB Confidence Cap Reason") or "NONE").split("; ") if x and x != "NONE"]
+        caps.extend(conflict_reasons)
+        out["UB Confidence Cap Reason"] = "; ".join(dict.fromkeys(caps)) or "NONE"
+        # External source disagreement is non-directional: cap confidence and log it,
+        # but do NOT throw away an otherwise winning side. Only a true internal lock
+        # failure is fail-closed because then projection/guard/card workload could diverge.
+        if not prov.get("internal_ok"):
+            old_play = str(out.get("Undefeated Beta Playability") or "TRACK")
+            new_play = "PASS" if old_play != "NO_LINE" else "NO_LINE"
+            if new_play != old_play:
+                out["Undefeated Beta Playability"] = new_play
+                side = str(out.get("Undefeated Beta Side") or "")
+                out["Undefeated Beta Decision State"] = f"{new_play}_{side}" if side in {"OVER", "UNDER"} else new_play
+                if out.get("Best Play Score") is not None:
+                    out["Best Play Score"] = max(0.0, float(_ub_num(out.get("Best Play Score"), 0.0) or 0.0) - 10.0)
+                if new_play == "PASS":
+                    out["Best Play Tier"] = "PASS"
+        reason = str(out.get("Undefeated Beta Decision Reason") or "")
+        out["Undefeated Beta Decision Reason"] = (reason + "; " + "; ".join(conflict_reasons)).strip("; ")
+
+    # Formula integrity: projection/side/edge must still reconcile, and final BF P50
+    # must be the same center exposed as the component-blended workload.
+    out["UB V1.10.1 Formula Check"] = bool(out.get("UB V1.10 Formula Check") and prov.get("internal_ok"))
+    out["UB Pregame Feature Persistence"] = "COMPLETE_V1_10_1_SYNC_COHERENCE"
+    return out
+
+
 def _ub_apply_slate_imbalance_guard(frame):
     """Decision/ranking sanity check only; raw projections and sides remain unchanged."""
     if frame is None or frame.empty or "Undefeated Beta Side" not in frame.columns:
@@ -65617,6 +66336,16 @@ def _ub_beta_signal_signature(board):
             _ub_num(_ub_first([p], ["TTO3_K_pct", "tto3_k_pct"], None), None),
             str(p.get("bullpen_status") or ""), str(p.get("run_damage_risk_level") or ""), str(p.get("manager_hook_status") or ""),
             str(p.get("probable_role") or p.get("pitcher_role") or p.get("role") or ""),
+            _ub_num(_ub_first([p], ["current_po_projection", "po_shadow_projection", "PO Projection"], None), None),
+            _ub_num(_ub_first([p], ["current_po_line", "po_shadow_line", "PO Line"], None), None),
+            str(_ub_first([p], ["current_po_side", "po_shadow_side", "PO Side"], "") or ""),
+            str(_ub_first([p], ["current_po_timestamp", "po_shadow_timestamp", "PO Timestamp"], "") or ""),
+            str(_ub_first([p], ["current_po_matchup", "po_shadow_matchup", "PO Matchup"], "") or ""),
+            _ub_num(p.get("Canonical Expected BF"), None),
+            _ub_num(p.get("expected_bf"), None),
+            _ub_num(p.get("APP97 Reconciled Expected BF"), None),
+            _ub_num(p.get("APP100 Projected BF"), None),
+            _ub_num(p.get("Proj BF"), None),
             tuple(game_sig), tuple(summary_sig),
         ))
     return tuple(rows)
@@ -65676,6 +66405,21 @@ def _ub_apply_beta_to_k_frame(base_df, beta_df):
         return base_df.copy()
     beta_map = {normalize_name(r.get("Pitcher")): r for r in beta_df.to_dict("records")}
     out = base_df.copy()
+
+    # V1.9.1 UI-only dtype hotfix retained in V1.10:
+    # pandas StringDtype columns reject numeric Beta values (for example 57.1).
+    # The overlay is a presentation frame, so safely promote only the specific
+    # destination column to object if an assignment encounters a dtype conflict.
+    # This does NOT alter any biological projection, probability, workload, or ML math.
+    def _ub_overlay_set(row_idx, col, value):
+        if col not in out.columns:
+            out[col] = pd.Series([None] * len(out), index=out.index, dtype="object")
+        try:
+            out.at[row_idx, col] = value
+        except (TypeError, ValueError):
+            out[col] = out[col].astype("object")
+            out.at[row_idx, col] = value
+
     for idx, sr in out.iterrows():
         name = normalize_name(sr.get("Pitcher") or sr.get("pitcher") or "")
         ub = beta_map.get(name)
@@ -65688,27 +66432,27 @@ def _ub_apply_beta_to_k_frame(base_df, beta_df):
         prob = ub.get("UB Calibrated Clear Probability %")
         state = f"PLAY_{side}" if play == "OFFICIAL_PLAY" else f"TRACK_{side}" if play in {"LEAN", "TRACK"} else f"PASS_{side}" if side in {"OVER", "UNDER"} else "NO_LINE"
         for col in ["Canonical Final K Projection", "K PROJ", "Official K PROJ", "Final K Projection"]:
-            out.at[idx, col] = proj
-        out.at[idx, "Canonical Line"] = line
-        out.at[idx, "Canonical Side"] = side
-        out.at[idx, "Final Decision State"] = state
-        out.at[idx, "Canonical Decision"] = state
-        out.at[idx, "Canonical Edge"] = None if line is None else round(proj - line, 2)
-        out.at[idx, "K Sim Current Side Prob %"] = prob
-        out.at[idx, "Current Side Prob %"] = prob
-        out.at[idx, "Confidence %"] = prob
+            _ub_overlay_set(idx, col, proj)
+        _ub_overlay_set(idx, "Canonical Line", line)
+        _ub_overlay_set(idx, "Canonical Side", side)
+        _ub_overlay_set(idx, "Final Decision State", state)
+        _ub_overlay_set(idx, "Canonical Decision", state)
+        _ub_overlay_set(idx, "Canonical Edge", None if line is None else round(proj - line, 2))
+        _ub_overlay_set(idx, "K Sim Current Side Prob %", prob)
+        _ub_overlay_set(idx, "Current Side Prob %", prob)
+        _ub_overlay_set(idx, "Confidence %", prob)
         # V1.7: visible workload is the same blended runtime workload used by final K math.
         final_bf = ub.get("UB Blended BF") if ub.get("UB Blended BF") is not None else ub.get("UB BF P50")
         final_ip = ub.get("UB Blended IP") if ub.get("UB Blended IP") is not None else ub.get("UB IP P50")
-        out.at[idx, "APP97 Reconciled Expected BF"] = final_bf
-        out.at[idx, "Exp BF"] = final_bf
-        out.at[idx, "Projected BF"] = final_bf
-        out.at[idx, "IP Floor"] = final_ip
-        out.at[idx, "IP PROJ"] = final_ip
-        out.at[idx, "Projected IP"] = final_ip
-        out.at[idx, "Winning File K Source"] = "UNDEFEATED BETA · K UPSIDE INTEGRATED"
+        _ub_overlay_set(idx, "APP97 Reconciled Expected BF", final_bf)
+        _ub_overlay_set(idx, "Exp BF", final_bf)
+        _ub_overlay_set(idx, "Projected BF", final_bf)
+        _ub_overlay_set(idx, "IP Floor", final_ip)
+        _ub_overlay_set(idx, "IP PROJ", final_ip)
+        _ub_overlay_set(idx, "Projected IP", final_ip)
+        _ub_overlay_set(idx, "Winning File K Source", "UNDEFEATED BETA · K UPSIDE INTEGRATED")
         for key, value in ub.items():
-            out.at[idx, key] = value
+            _ub_overlay_set(idx, key, value)
     return out
 
 
@@ -66124,10 +66868,10 @@ def render_undefeated_beta_tab(board, integrated=False):
     with st.expander("Undefeated Beta Full Audit", expanded=False):
         cols = [c for c in [
             "Undefeated Beta Rank", "Pitcher", "Matchup", "Line", "Merge Control Projection", "Master Core Only Projection",
-            "PO Projection", "PO Line", "PO Same Line", "PO Timestamp", "Merge Timestamp", "PO vs Merge True Side Disagreement",
+            "PO Projection", "PO Line", "PO Same Line", "PO Side Same-Line", "PO Stored Side", "PO Mathematical Side", "PO Sync State", "PO Comparable", "PO Physical Same Line", "PO Same Game", "PO Same Refresh State", "PO Refresh Gap Minutes", "PO Side Integrity Mismatch", "PO Timestamp", "Merge Timestamp", "PO vs Merge True Side Disagreement",
             "UB Fixed Core Projection", "Undefeated Beta Projection", "Undefeated Beta Side", "UB Side Flip vs Merge", "UB Flip Driver", "UB Side Math Check", "UB Edge Math Check", "Undefeated Beta Playability", "UB Calibrated Clear Probability %",
             "UB Skill/Matchup Delta", "UB Pitch Trend Delta", "UB Workload Delta", "UB Suppression Escape Delta", "UB Cap Adjustment", "UB Attribution Residual",
-            "UB BF P10", "UB BF P50", "UB BF P90", "UB IP P50", "UB Skill K/BF", "UB Matchup K/BF", "UB Lineup Exposure K%", "UB V1.8 Full Starter BF", "UB V1.8 Full Starter IP", "UB V1.8 Full Starter Sample", "UB V1.8 Full Starter Source", "UB Lineup Top3 K%", "UB Lineup Top5 K%", "UB Lineup High-K 25% Count", "UB Lineup High-K 30% Count", "UB Lineup Concentration Modifier", "UB Conversion Interaction K/BF", "UB Conversion Interaction Delta", "UB Conversion Interaction Status", "UB V1.9 Pitch Budget BF", "UB V1.9 Pitch Budget Pitches", "UB V1.9 Pitch Budget Expected PPB", "UB Pitch Budget Move BF", "UB Pitch Budget Authority", "UB Positive Leash Support", "UB Negative Hook Risk", "UB Contact Finishability Status", "UB Contact Finishability K/BF", "UB TTO Weighted K%", "UB TTO Rate K/BF Modifier", "UB Flip Evidence Status", "UB Flip Evidence Count",
+            "UB BF P10", "UB BF P50", "UB BF P90", "UB IP P50", "UB Decision Workload Source", "UB Decision Workload BF P50", "UB Workload Internal Lock Check", "UB Workload Internal Lock Gap BF", "UB Workload Source Conflict", "UB Workload Source Conflict Unresolved", "UB Workload Source Range BF", "UB Workload Source Max Gap To Lock BF", "UB Workload Conflict Resolution", "UB Workload Source States", "UB Skill K/BF", "UB Matchup K/BF", "UB Lineup Exposure K%", "UB V1.8 Full Starter BF", "UB V1.8 Full Starter IP", "UB V1.8 Full Starter Sample", "UB V1.8 Full Starter Source", "UB Lineup Top3 K%", "UB Lineup Top5 K%", "UB Lineup High-K 25% Count", "UB Lineup High-K 30% Count", "UB Lineup Concentration Modifier", "UB Conversion Interaction K/BF", "UB Conversion Interaction Delta", "UB Conversion Interaction Status", "UB V1.9 Pitch Budget BF", "UB V1.9 Pitch Budget Pitches", "UB V1.9 Pitch Budget Expected PPB", "UB Pitch Budget Move BF", "UB Pitch Budget Authority", "UB Positive Leash Support", "UB Negative Hook Risk", "UB Contact Finishability Status", "UB Contact Finishability K/BF", "UB TTO Weighted K%", "UB TTO Rate K/BF Modifier", "UB Flip Evidence Status", "UB Flip Evidence Count", "UB Biological Projection", "UB Biological Side", "UB Decision Resolver Adjustment K", "UB Decision Resolver Reasons", "UB OVER Floor Survival", "UB OVER P25 K", "UB OVER P40 K", "UB Exact Line Fragility", "UB Exact Line One-K Zone Mass %", "UB Low-Line Threshold Status", "UB Low-Line L5 Over %", "UB Low-Line L10 Over %", "UB Model Disagreement Status", "UB vs PO Projection Gap K", "UB Current Role K/BF Consensus", "UB Current Role K/BF Modifier", "UB Current Role K/BF Delta", "UB Final Attribution Residual", "UB Final Attribution Reconciles",
             "UB K Opportunity Score", "UB Conversion Score", "UB Pitcher K% Used", "UB Whiff% Used", "UB CSW% Used", "UB PutAway% Used",
             "UB Current State", "UB Current State Authority", "UB Current State K/BF", "UB Current State Recent Consensus K/BF", "UB Current State Recent Weight",
             "UB Current State Support", "UB Current State Risk", "UB True Talent K/BF", "UB True Talent Sources", "UB Recency Decay K/BF", "UB Recency Decay Starts",
@@ -66204,9 +66948,9 @@ def render_sports_analysis_brain_tab(board):
     elif filt == "PASS": show = show[show["Undefeated Beta Playability"] == "PASS"]
     show = show.sort_values("Best Play Score", ascending=False)
     cols = [c for c in [
-        "Undefeated Beta Rank", "Pitcher", "Matchup", "Line", "Merge Control Projection", "Merge Control Side", "PO Projection", "PO Line", "PO Same Line", "PO Side Same-Line",
+        "Undefeated Beta Rank", "Pitcher", "Matchup", "Line", "Merge Control Projection", "Merge Control Side", "PO Projection", "PO Line", "PO Same Line", "PO Side Same-Line", "PO Sync State", "PO Comparable",
         "Undefeated Beta Projection", "Undefeated Beta Side", "Undefeated Beta Playability", "UB Calibrated Clear Probability %", "Sports Brain Side", "Sports Brain Score", "Best Play Score", "Best Play Tier",
-        "UB Conversion Score", "UB Lineup Exposure K%", "UB Suppression Escape Score", "UB False Over Risk", "UB Recent K Acceleration", "UB Pitch Trend Score", "UB Pitch Capacity BF", "UB Pitch Count Authority Score", "UB Workload Confidence", "UB Role", "UB Regime", "UB Lineup Stage", "UB Data Quality",
+        "UB Conversion Score", "UB Lineup Exposure K%", "UB Suppression Escape Score", "UB False Over Risk", "UB Recent K Acceleration", "UB Pitch Trend Score", "UB Pitch Capacity BF", "UB Pitch Count Authority Score", "UB Workload Confidence", "UB Decision Workload Source", "UB Workload Source Conflict", "UB Workload Conflict Resolution", "UB Role", "UB Regime", "UB Lineup Stage", "UB Data Quality",
         "Brain Main Support", "Brain Main Risk", "Sports Brain Verdict"
     ] if c in show.columns]
     st.dataframe(show[cols], use_container_width=True, hide_index=True)
