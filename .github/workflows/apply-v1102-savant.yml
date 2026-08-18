@@ -3,7 +3,7 @@ name: Apply Undefeated V1.10.2 Savant Full Profile
 on:
   push:
     paths:
-      - 'apply_v1102_patch.py'
+      - 'bootstrap_v1102.py'
   workflow_dispatch:
 
 permissions:
@@ -23,15 +23,15 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Apply safe V1.10.2 patch
-        run: python apply_v1102_patch.py
+      - name: Reconstruct data and apply safe V1.10.2 patch
+        run: python bootstrap_v1102.py
 
       - name: Compile app.py
         run: python -m py_compile app.py
 
       - name: Commit patched app and Savant profile
         run: |
-          if git diff --quiet -- app.py learning_data/savant_full_pitcher_profiles.csv; then
+          if [ -z "$(git status --porcelain -- app.py learning_data/savant_full_pitcher_profiles.csv)" ]; then
             echo "Nothing to commit"
             exit 0
           fi
