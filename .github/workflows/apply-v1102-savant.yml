@@ -27,6 +27,16 @@ jobs:
         run: python -m pip install --quiet pandas requests
       - name: Export live Savant data
         run: python tmp_savant_export.py
+      - name: Upload downloadable CSVs
+        uses: actions/upload-artifact@v4
+        with:
+          name: savant-download-files
+          path: |
+            savant_refresh_output/savant_batter_profiles.csv
+            savant_refresh_output/savant_pitcher_stats.csv
+            savant_refresh_output/pitch_mix_matchups.csv
+          if-no-files-found: error
+          retention-days: 1
       - name: Commit export to this temporary branch only
         if: always()
         run: |
