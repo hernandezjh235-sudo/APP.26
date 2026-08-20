@@ -1,16 +1,16 @@
-name: Temporary Savant Export
+name: Apply Undefeated V1.10.2 Savant Full Profile
 
 on:
   push:
     paths:
-      - 'tmp_savant_export.py'
+      - 'bootstrap_v1102.py'
   workflow_dispatch:
 
 permissions:
   contents: write
 
 jobs:
-  export:
+  apply-patch:
     if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
     timeout-minutes: 15
