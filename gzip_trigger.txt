@@ -1,1 +1,1 @@
-Create temporary compressed transfer copies of the validated Aug. 20, 2026 Savant CSV files.
+Create temporary compressed transfer copies of all four validated Aug. 20, 2026 Savant CSV files, including platoon. Trigger 2.
