@@ -1,1 +1,1 @@
-Create safe split transfer chunks for the validated Aug. 20, 2026 platoon CSV. Trigger 3.
+Create smaller safe split transfer chunks for the validated Aug. 20, 2026 platoon CSV. Trigger 4.
