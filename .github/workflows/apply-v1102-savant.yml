@@ -24,11 +24,11 @@ jobs:
           gzip -c savant_refresh_output/savant_batter_platoon_2026.last_good.csv > /tmp/platoon.csv.gz
           base64 -w 0 /tmp/platoon.csv.gz > /tmp/platoon.b64
           rm -f savant_refresh_output/platoon_transfer_*
-          split -b 8000 -d -a 2 /tmp/platoon.b64 savant_refresh_output/platoon_transfer_
+          split -b 2500 -d -a 2 /tmp/platoon.b64 savant_refresh_output/platoon_transfer_
       - name: Commit transfer chunks
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add savant_refresh_output/platoon_transfer_*
-          git commit -m "Temporary platoon transfer chunks [skip ci]" || exit 0
+          git add -A savant_refresh_output/platoon_transfer_*
+          git commit -m "Temporary small platoon transfer chunks [skip ci]" || exit 0
           git push origin "HEAD:${GITHUB_REF_NAME}"
