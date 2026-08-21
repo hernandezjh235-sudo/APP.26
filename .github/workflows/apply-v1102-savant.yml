@@ -1,13 +1,13 @@
-name: Temporary Savant Attachment Export
+name: Temporary Savant Gzip Export
 
 on:
   push:
     paths:
-      - 'attachment_trigger.txt'
+      - 'gzip_trigger.txt'
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   export:
@@ -16,18 +16,22 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - name: Verify downloadable CSVs
         run: |
           test -f savant_refresh_output/savant_batter_profiles.csv
           test -f savant_refresh_output/savant_pitcher_stats.csv
           test -f savant_refresh_output/pitch_mix_matchups.csv
-      - name: Upload downloadable CSVs
-        uses: actions/upload-artifact@v4
-        with:
-          name: savant-download-files
-          path: |
-            savant_refresh_output/savant_batter_profiles.csv
-            savant_refresh_output/savant_pitcher_stats.csv
-            savant_refresh_output/pitch_mix_matchups.csv
-          if-no-files-found: error
-          retention-days: 1
+      - name: Compress CSVs for transfer
+        run: |
+          gzip -c savant_refresh_output/savant_batter_profiles.csv > savant_refresh_output/savant_batter_profiles.csv.gz
+          gzip -c savant_refresh_output/savant_pitcher_stats.csv > savant_refresh_output/savant_pitcher_stats.csv.gz
+          gzip -c savant_refresh_output/pitch_mix_matchups.csv > savant_refresh_output/pitch_mix_matchups.csv.gz
+      - name: Commit compressed transfer files
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add savant_refresh_output/*.csv.gz
+          git commit -m "Temporary compressed Savant transfer files [skip ci]"
+          git push origin "HEAD:${GITHUB_REF_NAME}"
