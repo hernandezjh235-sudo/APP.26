@@ -23,15 +23,17 @@ jobs:
           test -f savant_refresh_output/savant_batter_profiles.csv
           test -f savant_refresh_output/savant_pitcher_stats.csv
           test -f savant_refresh_output/pitch_mix_matchups.csv
+          test -f savant_refresh_output/savant_batter_platoon_2026.last_good.csv
       - name: Compress CSVs for transfer
         run: |
           gzip -c savant_refresh_output/savant_batter_profiles.csv > savant_refresh_output/savant_batter_profiles.csv.gz
           gzip -c savant_refresh_output/savant_pitcher_stats.csv > savant_refresh_output/savant_pitcher_stats.csv.gz
           gzip -c savant_refresh_output/pitch_mix_matchups.csv > savant_refresh_output/pitch_mix_matchups.csv.gz
+          gzip -c savant_refresh_output/savant_batter_platoon_2026.last_good.csv > savant_refresh_output/savant_batter_platoon_2026.last_good.csv.gz
       - name: Commit compressed transfer files
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add savant_refresh_output/*.csv.gz
-          git commit -m "Temporary compressed Savant transfer files [skip ci]"
+          git commit -m "Temporary compressed Savant transfer files [skip ci]" || exit 0
           git push origin "HEAD:${GITHUB_REF_NAME}"
