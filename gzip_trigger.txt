@@ -1,0 +1,1 @@
+Create temporary compressed transfer copies of the validated Aug. 20, 2026 Savant CSV files.
