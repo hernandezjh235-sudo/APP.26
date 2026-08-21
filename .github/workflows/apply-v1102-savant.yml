@@ -1,4 +1,4 @@
-name: Temporary Savant Gzip Export
+name: Temporary Savant Chunk Export
 
 on:
   push:
@@ -18,22 +18,17 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - name: Verify downloadable CSVs
+      - name: Build platoon transfer chunks
         run: |
-          test -f savant_refresh_output/savant_batter_profiles.csv
-          test -f savant_refresh_output/savant_pitcher_stats.csv
-          test -f savant_refresh_output/pitch_mix_matchups.csv
           test -f savant_refresh_output/savant_batter_platoon_2026.last_good.csv
-      - name: Compress CSVs for transfer
-        run: |
-          gzip -c savant_refresh_output/savant_batter_profiles.csv > savant_refresh_output/savant_batter_profiles.csv.gz
-          gzip -c savant_refresh_output/savant_pitcher_stats.csv > savant_refresh_output/savant_pitcher_stats.csv.gz
-          gzip -c savant_refresh_output/pitch_mix_matchups.csv > savant_refresh_output/pitch_mix_matchups.csv.gz
-          gzip -c savant_refresh_output/savant_batter_platoon_2026.last_good.csv > savant_refresh_output/savant_batter_platoon_2026.last_good.csv.gz
-      - name: Commit compressed transfer files
+          gzip -c savant_refresh_output/savant_batter_platoon_2026.last_good.csv > /tmp/platoon.csv.gz
+          base64 -w 0 /tmp/platoon.csv.gz > /tmp/platoon.b64
+          rm -f savant_refresh_output/platoon_transfer_*
+          split -b 8000 -d -a 2 /tmp/platoon.b64 savant_refresh_output/platoon_transfer_
+      - name: Commit transfer chunks
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add savant_refresh_output/*.csv.gz
-          git commit -m "Temporary compressed Savant transfer files [skip ci]" || exit 0
+          git add savant_refresh_output/platoon_transfer_*
+          git commit -m "Temporary platoon transfer chunks [skip ci]" || exit 0
           git push origin "HEAD:${GITHUB_REF_NAME}"
