@@ -35,3 +35,5 @@ subprocess.run([sys.executable, str(patch_path)], cwd=ROOT, check=True)
 
 print(f"Installed Savant full pitcher profile: {data_path} ({len(data)} bytes)")
 print("Applied Undefeated V1.10.2 Savant Full Profile patch to app.py")
+
+# Temporary trigger only: live installer refresh requested 2026-08-22.
