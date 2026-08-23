@@ -6,6 +6,13 @@ on:
     paths:
       - '.github/workflows/chatgpt-savant-refresh.yml'
       - 'tools/chatgpt_refresh_savant.py'
+      - 'tools/savant_refresh_trigger.txt'
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/chatgpt-savant-refresh.yml'
+      - 'tools/chatgpt_refresh_savant.py'
+      - 'tools/savant_refresh_trigger.txt'
   workflow_dispatch:
 
 permissions:
@@ -39,7 +46,8 @@ jobs:
               assert len(d)>=minimum, (n,len(d))
           print('validated', {n:(root/n).stat().st_size for n in expected})
           PY
-      - name: Commit refreshed individual files
+      - name: Commit refreshed individual files on push runs
+        if: github.event_name == 'push'
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
@@ -56,5 +64,3 @@ jobs:
           name: savant-refresh-individual-files
           path: savant_refresh_output/*
           if-no-files-found: error
-
-# Triggered by ChatGPT on 2026-08-22 for a fresh live-data rebuild.
