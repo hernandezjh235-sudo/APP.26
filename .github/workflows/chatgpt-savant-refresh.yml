@@ -28,7 +28,7 @@ jobs:
         run: |
           python - <<'PY'
           from pathlib import Path
-          import pandas as pd, json
+          import pandas as pd
           root=Path('savant_refresh_output')
           expected=['savant_batter_platoon_2026.csv','savant_batter_platoon_2026.last_good.csv','savant_refresh_manifest.json','savant_batter_profiles.csv','savant_batter_profiles.last_good.csv','savant_pitcher_stats.csv','savant_pitcher_stats.last_good.csv','pitch_mix_matchups.csv','pitch_mix_matchups.last_good.csv','savant_aux_refresh_manifest.json']
           for n in expected:
@@ -56,3 +56,5 @@ jobs:
           name: savant-refresh-individual-files
           path: savant_refresh_output/*
           if-no-files-found: error
+
+# Triggered by ChatGPT on 2026-08-22 for a fresh live-data rebuild.
