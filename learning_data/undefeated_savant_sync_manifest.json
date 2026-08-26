@@ -1,0 +1,51 @@
+{
+  "mode": "DATA_ONLY_SAME_SNAPSHOT_AS_CHALLENGER",
+  "source_repo": "hernandezjh235-sudo/chanllger",
+  "source_commit": "6382a667798a5ad348f8e182f66b839dd0eded4b",
+  "synced_at_utc": "2026-08-26T06:07:59+00:00",
+  "files": {
+    "savant_batter_platoon_2026.csv": {
+      "rows": 639,
+      "sha256": "ac53830c2f13e520adfa9a5d046429816fe2690dce0b7cb1a9c9a83aab52f5d7"
+    },
+    "savant_batter_platoon_2026.last_good.csv": {
+      "rows": 639,
+      "sha256": "ac53830c2f13e520adfa9a5d046429816fe2690dce0b7cb1a9c9a83aab52f5d7"
+    },
+    "savant_batter_profiles.csv": {
+      "rows": 639,
+      "sha256": "f3665423a4fc3d1dbbc1b202f1643e634ab7c7f3dce6772a05b1cddd6674b664"
+    },
+    "savant_batter_profiles.last_good.csv": {
+      "rows": 639,
+      "sha256": "f3665423a4fc3d1dbbc1b202f1643e634ab7c7f3dce6772a05b1cddd6674b664"
+    },
+    "savant_pitcher_stats.csv": {
+      "rows": 778,
+      "sha256": "a05a30ed1fe488f293e27f37c3164bfdd76ff0e9709fa1d833e0943a4429f8e2"
+    },
+    "savant_pitcher_stats.last_good.csv": {
+      "rows": 778,
+      "sha256": "a05a30ed1fe488f293e27f37c3164bfdd76ff0e9709fa1d833e0943a4429f8e2"
+    },
+    "pitch_mix_matchups.csv": {
+      "rows": 3511,
+      "sha256": "f570ae7db95122877b2ff31a76c8af2864897292644838b4259dbde9e6ee2a89"
+    },
+    "pitch_mix_matchups.last_good.csv": {
+      "rows": 3511,
+      "sha256": "f570ae7db95122877b2ff31a76c8af2864897292644838b4259dbde9e6ee2a89"
+    },
+    "savant_refresh_manifest.json": {
+      "status": "SUCCESS",
+      "sha256": "25c13c901aa20b23b601063fe45d1c4403c39bf3e05dae880da6a190440a4e8c"
+    },
+    "savant_aux_refresh_manifest.json": {
+      "status": "SUCCESS",
+      "sha256": "49e551be314ad17a613c0f84e18501877227722cab12462badb2cbc559fe5277"
+    }
+  },
+  "app_py_touched": false,
+  "projection_formula_touched": false,
+  "graded_history_touched": false
+}

@@ -1,0 +1,25 @@
+{
+  "datasets": {
+    "batter_profiles": {
+      "error": "",
+      "row_count": 639,
+      "status": "SUCCESS"
+    },
+    "pitch_mix_matchups": {
+      "error": "",
+      "row_count": 3511,
+      "status": "SUCCESS"
+    },
+    "pitcher_stats": {
+      "error": "",
+      "row_count": 778,
+      "status": "SUCCESS"
+    }
+  },
+  "last_success_at": "2026-08-25T19:15:23+00:00",
+  "refresh_completed_at": "2026-08-25T19:15:23+00:00",
+  "refresh_started_at": "2026-08-25T19:02:20+00:00",
+  "schema_version": "SAVANT_AUX_MANIFEST_SCHEMA_V1",
+  "season": 2026,
+  "status": "SUCCESS"
+}
