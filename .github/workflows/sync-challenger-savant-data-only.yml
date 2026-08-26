@@ -1,0 +1,70 @@
+name: Sync Challenger Savant Data Only
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - savant-data-only-test
+    paths:
+      - 'tools/sync_challenger_savant_data.py'
+      - '.github/workflows/sync-challenger-savant-data-only.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  sync-savant-data-only:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout test branch
+        uses: actions/checkout@v4
+        with:
+          ref: savant-data-only-test
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Prove app.py is unchanged by sync
+        shell: bash
+        run: |
+          sha256sum app.py > /tmp/app_before.sha
+          python tools/sync_challenger_savant_data.py
+          sha256sum app.py > /tmp/app_after.sha
+          diff -u /tmp/app_before.sha /tmp/app_after.sha
+
+      - name: Commit only synchronized Savant data
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add \
+            learning_data/savant_batter_platoon_2026.csv \
+            learning_data/savant_batter_platoon_2026.last_good.csv \
+            learning_data/savant_batter_profiles.csv \
+            learning_data/savant_batter_profiles.last_good.csv \
+            learning_data/savant_pitcher_stats.csv \
+            learning_data/savant_pitcher_stats.last_good.csv \
+            learning_data/pitch_mix_matchups.csv \
+            learning_data/pitch_mix_matchups.last_good.csv \
+            learning_data/savant_refresh_manifest.json \
+            learning_data/savant_aux_refresh_manifest.json \
+            learning_data/undefeated_savant_sync_manifest.json
+
+          # Safety gate: refuse any staged file outside the data-only allow-list.
+          BAD="$(git diff --cached --name-only | grep -Ev '^(learning_data/(savant_batter_platoon_2026(\.last_good)?\.csv|savant_batter_profiles(\.last_good)?\.csv|savant_pitcher_stats(\.last_good)?\.csv|pitch_mix_matchups(\.last_good)?\.csv|savant_refresh_manifest\.json|savant_aux_refresh_manifest\.json|undefeated_savant_sync_manifest\.json))$' || true)"
+          if [ -n "$BAD" ]; then
+            echo "Refusing commit; unexpected staged paths:"
+            echo "$BAD"
+            exit 1
+          fi
+
+          if git diff --cached --quiet; then
+            echo "Savant snapshot already matches Challenger; nothing to commit."
+            exit 0
+          fi
+
+          git commit -m "Sync validated Challenger Savant snapshot"
+          git push origin HEAD:savant-data-only-test
