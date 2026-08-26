@@ -1,0 +1,197 @@
+name: Undefeated Challenger Savant Data Sync
+
+on:
+  workflow_dispatch:
+  schedule:
+    # Challenger refreshes at 13:20 and 18:20 UTC. Mirror after those jobs have time to finish.
+    - cron: '45 13 * * *'
+    - cron: '45 18 * * *'
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/sync_challenger_savant.yml'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: undefeated-challenger-savant-sync
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+
+    steps:
+      - name: Checkout Undefeated
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install validation dependency
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install pandas
+
+      - name: Download Challenger validated Savant installer set
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p .savant_sync
+          base='https://raw.githubusercontent.com/hernandezjh235-sudo/chanllger/main/learning_data'
+          files=(
+            'savant_batter_platoon_2026.csv'
+            'savant_batter_platoon_2026.last_good.csv'
+            'savant_refresh_manifest.json'
+            'savant_batter_profiles.csv'
+            'savant_batter_profiles.last_good.csv'
+            'savant_pitcher_stats.csv'
+            'savant_pitcher_stats.last_good.csv'
+            'pitch_mix_matchups.csv'
+            'pitch_mix_matchups.last_good.csv'
+            'savant_aux_refresh_manifest.json'
+          )
+          for file in "${files[@]}"; do
+            echo "Downloading ${file}"
+            curl --fail --location --silent --show-error --retry 4 --retry-all-errors \
+              "${base}/${file}" -o ".savant_sync/${file}"
+          done
+
+      - name: Validate Challenger Savant snapshot before publish
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          from datetime import datetime, timezone
+          import json
+          import pandas as pd
+
+          root = Path('.savant_sync')
+          expected = [
+              'savant_batter_platoon_2026.csv',
+              'savant_batter_platoon_2026.last_good.csv',
+              'savant_refresh_manifest.json',
+              'savant_batter_profiles.csv',
+              'savant_batter_profiles.last_good.csv',
+              'savant_pitcher_stats.csv',
+              'savant_pitcher_stats.last_good.csv',
+              'pitch_mix_matchups.csv',
+              'pitch_mix_matchups.last_good.csv',
+              'savant_aux_refresh_manifest.json',
+          ]
+          for name in expected:
+              p = root / name
+              assert p.exists(), f'missing {name}'
+              assert p.stat().st_size > 20, f'empty {name}'
+
+          pairs = [
+              ('savant_batter_platoon_2026.csv', 'savant_batter_platoon_2026.last_good.csv'),
+              ('savant_batter_profiles.csv', 'savant_batter_profiles.last_good.csv'),
+              ('savant_pitcher_stats.csv', 'savant_pitcher_stats.last_good.csv'),
+              ('pitch_mix_matchups.csv', 'pitch_mix_matchups.last_good.csv'),
+          ]
+          for active, last_good in pairs:
+              assert (root/active).read_bytes() == (root/last_good).read_bytes(), \
+                  f'active/LAST_GOOD mismatch: {active}'
+
+          minimums = {
+              'savant_batter_platoon_2026.csv': 500,
+              'savant_batter_profiles.csv': 500,
+              'savant_pitcher_stats.csv': 650,
+              'pitch_mix_matchups.csv': 1500,
+          }
+          frames = {}
+          for name, minimum in minimums.items():
+              df = pd.read_csv(root/name)
+              frames[name] = df
+              assert len(df) >= minimum, f'{name}: rows={len(df)} minimum={minimum}'
+
+          plat = frames['savant_batter_platoon_2026.csv']
+          batter = frames['savant_batter_profiles.csv']
+          r_pa = pd.to_numeric(plat['vs_rhp_pa'], errors='coerce')
+          l_pa = pd.to_numeric(plat['vs_lhp_pa'], errors='coerce')
+          r_k = pd.to_numeric(plat['vs_rhp_k_pct'], errors='coerce')
+          l_k = pd.to_numeric(plat['vs_lhp_k_pct'], errors='coerce')
+          split_pa = pd.to_numeric(plat['overall_pa'], errors='coerce').fillna(0).sum()
+          profile_pa = pd.to_numeric(batter['PA'], errors='coerce').fillna(0).sum()
+          ratio = float(split_pa / profile_pa) if profile_pa else 0.0
+          assert int(r_pa.gt(0).sum()) >= 450, 'insufficient batter PA coverage vs RHP'
+          assert int(l_pa.gt(0).sum()) >= 350, 'insufficient batter PA coverage vs LHP'
+          assert int(r_k.notna().sum()) >= 450, 'insufficient K% coverage vs RHP'
+          assert int(l_k.notna().sum()) >= 350, 'insufficient K% coverage vs LHP'
+          assert 0.90 <= ratio <= 1.10, f'split/profile PA ratio failed: {ratio:.3f}'
+
+          primary = json.loads((root/'savant_refresh_manifest.json').read_text())
+          aux = json.loads((root/'savant_aux_refresh_manifest.json').read_text())
+          assert primary.get('status') == 'SUCCESS', primary
+          assert aux.get('status') == 'SUCCESS', aux
+          assert int(primary.get('season')) == 2026
+          assert int(aux.get('season')) == 2026
+
+          stamp = datetime.fromisoformat(str(primary['last_success_at']).replace('Z', '+00:00'))
+          if stamp.tzinfo is None:
+              stamp = stamp.replace(tzinfo=timezone.utc)
+          age_hours = (datetime.now(timezone.utc) - stamp.astimezone(timezone.utc)).total_seconds() / 3600
+          assert age_hours <= 48, f'Challenger Savant snapshot is too stale: {age_hours:.1f} hours'
+
+          print('Validated Challenger Savant snapshot')
+          print('platoon rows:', len(plat))
+          print('batter rows:', len(batter))
+          print('pitcher rows:', len(frames['savant_pitcher_stats.csv']))
+          print('pitch-mix rows:', len(frames['pitch_mix_matchups.csv']))
+          print('snapshot age hours:', round(age_hours, 2))
+          PY
+
+      - name: Publish Savant data only into Undefeated
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p learning_data
+          cp .savant_sync/savant_batter_platoon_2026.csv learning_data/
+          cp .savant_sync/savant_batter_platoon_2026.last_good.csv learning_data/
+          cp .savant_sync/savant_refresh_manifest.json learning_data/
+          cp .savant_sync/savant_batter_profiles.csv learning_data/
+          cp .savant_sync/savant_batter_profiles.last_good.csv learning_data/
+          cp .savant_sync/savant_pitcher_stats.csv learning_data/
+          cp .savant_sync/savant_pitcher_stats.last_good.csv learning_data/
+          cp .savant_sync/pitch_mix_matchups.csv learning_data/
+          cp .savant_sync/pitch_mix_matchups.last_good.csv learning_data/
+          cp .savant_sync/savant_aux_refresh_manifest.json learning_data/
+
+      - name: Confirm app and projection code were not touched
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! git diff --quiet -- app.py merge_v269_safe_update.py bootstrap_v1102.py bootstrap_v1103.py bootstrap_v1104.py; then
+            echo 'ERROR: application/model code changed during data-only sync.'
+            git diff -- app.py merge_v269_safe_update.py bootstrap_v1102.py bootstrap_v1103.py bootstrap_v1104.py
+            exit 1
+          fi
+          echo 'Application/model code unchanged.'
+
+      - name: Commit refreshed Savant data only
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add \
+            learning_data/savant_batter_platoon_2026.csv \
+            learning_data/savant_batter_platoon_2026.last_good.csv \
+            learning_data/savant_refresh_manifest.json \
+            learning_data/savant_batter_profiles.csv \
+            learning_data/savant_batter_profiles.last_good.csv \
+            learning_data/savant_pitcher_stats.csv \
+            learning_data/savant_pitcher_stats.last_good.csv \
+            learning_data/pitch_mix_matchups.csv \
+            learning_data/pitch_mix_matchups.last_good.csv \
+            learning_data/savant_aux_refresh_manifest.json
+          if git diff --cached --quiet; then
+            echo 'Undefeated Savant data already matches Challenger; nothing to commit.'
+          else
+            git commit -m 'Sync Undefeated Savant data from Challenger'
+            git push origin HEAD:main
+          fi
