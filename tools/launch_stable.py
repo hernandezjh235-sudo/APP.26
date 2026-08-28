@@ -28,6 +28,7 @@ finally:
 PATCHES = [
     "tools/apply_unefeated_opponent_k_pipeline_cleanup_v1.py",
     "tools/apply_manual_refresh_state_v2.py",
+    "tools/apply_passive_savant_guard_v1.py",
 ]
 for rel in PATCHES:
     script = ROOT / rel
