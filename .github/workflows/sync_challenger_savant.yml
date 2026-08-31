@@ -1,15 +1,9 @@
 name: Undefeated Challenger Savant Data Sync
 
+# Challenger Savant refresh is app-controlled/manual-only.
+# Keep this mirror sync manual too so stale snapshots do not create scheduled failures.
 on:
   workflow_dispatch:
-  schedule:
-    # Challenger refreshes at 13:20 and 18:20 UTC. Mirror after those jobs have time to finish.
-    - cron: '45 13 * * *'
-    - cron: '45 18 * * *'
-  push:
-    branches: [main]
-    paths:
-      - '.github/workflows/sync_challenger_savant.yml'
 
 permissions:
   contents: write
